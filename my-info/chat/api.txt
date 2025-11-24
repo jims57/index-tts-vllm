@@ -1,0 +1,13 @@
+a. reference @api.py and update   @api.py to write exact logic, including these logic about startTimeId and messagId, @api.py#L30-33 @api.py#L101-106 @api.py#L681 @api.py#L910 @api.py#L1075 @api.py#L1142 @api.py#L1181-1186 
+b.  you can view @api_server.py as the minimax like service, it will like to use @api.py to call @api_server.py to get tts audio from text
+c.@tts#L1-7 is one of the example about how to post data to generate tts from text, fyi
+c. when @api.py to call the @api_server.py api, i will like to make both   @api.py and @api_server.py in exact same server, so when @api.py call @api_server.py like @tts , you can use localhost:7860 to call it, rahter than this(122.29.135.205:58056). in this case, it will make the request is fast
+d.since index-tts-vllm doesn't have streaming support, in order to mimic the streaming like response, like minimax, you can make the websocket /tts in @api.py to call @api_server.py based on text split by punctuations, like ws /tts in @melo-api.py . i mean the @api_server.py will response audio based on these split text like a stream
+e. make sure our clients(ios and android) call the @api.py exactly feel like the clients call @api.py , cuz, we will only expose @api.py to clients(@api_server.py view as an internal service called by @api.py )
+f. make  ws /tts in  @api.py accept these parameters@api.py#L227-232 like @api.py does, and accept @melo-api.py#L158 like @melo-api.py does
+g. audioFormat parameter default value is pcm, outputSampleRate default value is   16000, saveAudioFiles default is false, speakerId default is wm-sample-for-cosy  
+f. since index-tts-vllam @api_server.py only support Chinese and English, if language parameter is not specified, use the index-tts-vllm to decide, like @tts#L1-7 which don't specify language parameter. but if language parameter is specified, for Chinese, the possible value should be case insensitive: zh or  zh-cn, for english, the possible value should be case insensitive: en. if language parameter is specified, but the value is not the possible value, respond json like err to clients about the error
+g. both error or success, should use json like format, format you can reference @api.py 
+h. if speakerId parameter is  specified in ws /tts in @api.py , say e327cd589a5b99739ea21070a8529c46, it mean the @api.py will call @api_server.py like this @tts-localhost 
+i. the ws /tts in @api.py should respond each stream split by punctuation based from   @api_server.py  to clients immedidately using the exact same websocket to clients(cuz, speed is important to us, if any streams from   @api_server.py , the ws /tts in @api.py should send the streams to clients immediately)
+

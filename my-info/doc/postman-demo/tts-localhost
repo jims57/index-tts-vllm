@@ -1,0 +1,7 @@
+curl --location 'http://locahost:7860/tts_url' \
+--header 'Content-Type: application/json' \
+--data '{
+  "text": "在这样一个阳光明媚、微风拂面的下午，我独自坐在公园的长椅上，看着孩子们欢快地追逐嬉戏。",
+  "audio_paths": ["assets/e327cd589a5b99739ea21070a8529c46.wav"],
+  "seed": 42
+}'

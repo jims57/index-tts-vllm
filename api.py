@@ -2,8 +2,8 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.0.0
-# Changes number: 5
+# Version: 1.0.5
+# Changes number: 7
 """
 
 import argparse
@@ -13,11 +13,14 @@ import time
 import os
 import struct
 import re
+import shutil
+import subprocess
 from typing import Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Header, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel
 import uvicorn
 import aiohttp
 import uuid
@@ -103,7 +106,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
             }
         )
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 async def root():
     """根路径健康检查"""
     return {
@@ -111,153 +114,324 @@ async def root():
         "message": "Index-TTS-vLLM API is running"
     }
 
-@app.post("/uploadAudio")
-async def upload_audio(
-    file: UploadFile = File(...),
+@app.post("/denoiseAudio")
+async def denoise_audio(
+    audio: UploadFile = File(...),
+    sessionId: str = Form(...),
     x_api_key: Optional[str] = Header(None)
 ):
-    """上传音频文件用于声音克隆"""
+    """降噪音频API - 简化版本，直接保存WAV文件"""
+    # 验证API密钥
     verify_api_key(x_api_key)
     
+    # 验证sessionId是有效的UUID
     try:
-        # 创建保存目录
-        upload_dir = os.path.join(os.path.dirname(__file__), "assets", "uploaded")
-        os.makedirs(upload_dir, exist_ok=True)
+        uuid_obj = uuid.UUID(sessionId)
+    except Exception:
+        raise HTTPException(
+            status_code=200,
+            detail={
+                "errorCode": 4608,
+                "message": "sessionId must be a valid UUID string, e.g. 69361790-4120-49de-8c37-58c3e3eaf388"
+            }
+        )
+    
+    # 验证文件是PCM格式
+    if not audio.filename.lower().endswith('.pcm'):
+        raise HTTPException(
+            status_code=200,
+            detail={
+                "errorCode": 4609,
+                "message": "Only PCM files are allowed. Please upload a .pcm file."
+            }
+        )
+    
+    try:
+        # 生成MD5作为speakerId
+        import hashlib
+        md5_generator = hashlib.md5()
+        md5_generator.update(str(uuid.uuid4()).encode())
+        md5_id = md5_generator.hexdigest()
         
-        # 生成唯一文件名
-        file_extension = os.path.splitext(file.filename)[1]
-        unique_filename = f"{uuid.uuid4().hex}{file_extension}"
-        file_path = os.path.join(upload_dir, unique_filename)
+        # 创建denoised目录下的sessionId子文件夹
+        denoised_dir = os.path.join(os.path.dirname(__file__), "assets", "denoised")
+        session_dir = os.path.join(denoised_dir, sessionId)
+        os.makedirs(session_dir, exist_ok=True)
+        print(f"[DenoiseAudio] Created session directory: {session_dir}")
         
-        # 保存文件
-        content = await file.read()
-        with open(file_path, "wb") as f:
-            f.write(content)
+        # 保存上传的PCM文件到session目录
+        pcm_content = await audio.read()
+        pcm_path = os.path.join(session_dir, f"{md5_id}.pcm")
+        with open(pcm_path, 'wb') as f:
+            f.write(pcm_content)
+        print(f"[DenoiseAudio] Saved PCM file: {pcm_path}")
+        
+        # 转换PCM为WAV格式
+        wav_path = os.path.join(session_dir, f"{md5_id}.wav")
+        
+        try:
+            # 使用ffmpeg转换PCM到WAV
+            cmd = [
+                'ffmpeg',
+                '-f', 's16le',  # PCM 16位小端格式
+                '-ar', '16000',  # 输入采样率
+                '-ac', '1',      # 输入声道（单声道）
+                '-i', pcm_path,
+                '-ar', '16000',  # 输出采样率
+                '-ac', '1',      # 输出声道（单声道）
+                '-y',            # 覆盖输出文件
+                wav_path
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            print(f"[DenoiseAudio] Converted PCM to WAV: {wav_path}")
+        except subprocess.CalledProcessError as e:
+            raise HTTPException(
+                status_code=200,
+                detail={
+                    "errorCode": 4610,
+                    "message": f"Failed to convert PCM to WAV: {e.stderr}"
+                }
+            )
+        except FileNotFoundError:
+            raise HTTPException(
+                status_code=200,
+                detail={
+                    "errorCode": 4611,
+                    "message": "ffmpeg not found"
+                }
+            )
+        
+        # 验证WAV文件已创建
+        if not os.path.exists(wav_path):
+            raise HTTPException(
+                status_code=200,
+                detail={
+                    "errorCode": 4614,
+                    "message": "WAV file was not created"
+                }
+            )
+        
+        # 清理PCM文件
+        if os.path.exists(pcm_path):
+            os.unlink(pcm_path)
+            print(f"[DenoiseAudio] Cleaned up PCM file")
         
         return {
             "errorCode": 0,
-            "message": "Audio uploaded successfully",
-            "data": {
-                "filename": unique_filename,
-                "path": f"assets/uploaded/{unique_filename}"
-            }
+            "message": "Audio denoised successfully",
+            "sessionId": sessionId,
+            "speakerId": md5_id
         }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "errorCode": 5000,
-                "message": f"Failed to upload audio: {str(e)}"
+        raise HTTPException(
+            status_code=200,
+            detail={
+                "errorCode": 4615,
+                "message": f"Internal server error: {str(e)}"
             }
         )
 
+class CloneVoiceRequest(BaseModel):
+    text: str
+    sessionId: str
+
 @app.post("/cloneVoice")
-async def clone_voice(
-    audio_file: UploadFile = File(...),
-    speaker_name: str = Form(...),
-    x_api_key: Optional[str] = Header(None)
-):
-    """克隆声音并注册到系统"""
+async def clone_voice(request: Request, body: CloneVoiceRequest, x_api_key: Optional[str] = Header(None)):
+    """克隆声音API"""
+    print(f"[CloneVoice] Request received: sessionId={body.sessionId}, text length={len(body.text)}")
+    
+    # 验证API密钥
     verify_api_key(x_api_key)
     
+    # 验证sessionId是有效的UUID
     try:
-        # 保存上传的音频文件
-        upload_dir = os.path.join(os.path.dirname(__file__), "assets", "cloned")
-        os.makedirs(upload_dir, exist_ok=True)
+        uuid_obj = uuid.UUID(body.sessionId)
+    except Exception:
+        raise HTTPException(
+            status_code=200,
+            detail={
+                "errorCode": 4608,
+                "message": "sessionId must be a valid UUID string, e.g. 69361790-4120-49de-8c37-58c3e3eaf388"
+            }
+        )
+    
+    try:
+        # 在denoised目录的sessionId子文件夹中查找WAV文件
+        denoised_dir = os.path.join(os.path.dirname(__file__), "assets", "denoised")
+        session_dir = os.path.join(denoised_dir, body.sessionId)
+        print(f"[CloneVoice] Looking for WAV files in: {session_dir}")
         
-        file_extension = os.path.splitext(audio_file.filename)[1]
-        unique_filename = f"{speaker_name}_{uuid.uuid4().hex}{file_extension}"
-        file_path = os.path.join(upload_dir, unique_filename)
+        found_wav_file = None
+        speaker_id = None
         
-        content = await audio_file.read()
-        with open(file_path, "wb") as f:
-            f.write(content)
+        if os.path.exists(session_dir):
+            # 查找WAV文件
+            for filename in os.listdir(session_dir):
+                if filename.endswith('.wav'):
+                    # 提取speakerId（移除.wav扩展名）
+                    speaker_id = os.path.splitext(filename)[0]
+                    # 验证是有效的MD5（32字符十六进制）
+                    if len(speaker_id) == 32 and all(c in "0123456789abcdef" for c in speaker_id.lower()):
+                        found_wav_file = os.path.join(session_dir, filename)
+                        print(f"[CloneVoice] Found WAV file: {found_wav_file}, speaker_id: {speaker_id}")
+                        break
         
-        # 生成speaker ID (MD5)
-        import hashlib
-        speaker_id = hashlib.md5(speaker_name.encode()).hexdigest()
+        if not found_wav_file or not speaker_id:
+            print(f"[CloneVoice] ERROR: No WAV file found in session directory: {session_dir}")
+            raise HTTPException(
+                status_code=200,
+                detail={
+                    "errorCode": 4516,
+                    "message": f"No denoised WAV file found for sessionId {body.sessionId}. Please ensure audio denoising is completed first."
+                }
+            )
+        
+        # 创建assets目录（如果不存在）
+        assets_dir = os.path.join(os.path.dirname(__file__), "assets")
+        os.makedirs(assets_dir, exist_ok=True)
+        print(f"[CloneVoice] Created/verified assets directory: {assets_dir}")
+        
+        # 移动WAV文件到assets目录
+        target_wav_path = os.path.join(assets_dir, f"{speaker_id}.wav")
+        shutil.move(found_wav_file, target_wav_path)
+        print(f"[CloneVoice] Moved WAV file to: {target_wav_path}")
+        
+        # 保存文本到txt文件
+        txt_path = os.path.join(assets_dir, f"{speaker_id}.txt")
+        with open(txt_path, 'w', encoding='utf-8') as txt_file:
+            txt_file.write(body.text)
+        print(f"[CloneVoice] Saved text file: {txt_path}")
+        
+        # 清理session目录（如果为空）
+        try:
+            if os.path.exists(session_dir) and not os.listdir(session_dir):
+                os.rmdir(session_dir)
+                print(f"[CloneVoice] Cleaned up empty session directory: {session_dir}")
+        except Exception as e:
+            print(f"[CloneVoice] Warning: Failed to clean up session directory: {e}")
+        
+        # 构建WAV URL
+        host = request.url.hostname
+        port = request.url.port
+        scheme = request.url.scheme
+        if port is None or port == 80:
+            wav_url = f"{scheme}://{host}/resource/{speaker_id}.wav"
+        else:
+            wav_url = f"{scheme}://{host}:{port}/resource/{speaker_id}.wav"
         
         return {
             "errorCode": 0,
             "message": "Voice cloned successfully",
-            "data": {
-                "speakerId": speaker_id,
-                "speakerName": speaker_name,
-                "audioPath": f"assets/cloned/{unique_filename}"
-            }
+            "speakerId": speaker_id,
+            "wavUrl": wav_url,
+            "text": body.text
         }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "errorCode": 5000,
+        print(f"[CloneVoice] ERROR: {str(e)}")
+        raise HTTPException(
+            status_code=200,
+            detail={
+                "errorCode": 4517,
                 "message": f"Failed to clone voice: {str(e)}"
             }
         )
 
-@app.get("/getSpeakerVoice/{filename}")
-async def get_speaker_voice(filename: str):
-    """获取说话人音频文件"""
-    try:
-        # 检查多个可能的目录
-        possible_dirs = [
-            os.path.join(os.path.dirname(__file__), "assets", "uploaded"),
-            os.path.join(os.path.dirname(__file__), "assets", "cloned"),
-            os.path.join(os.path.dirname(__file__), "assets")
-        ]
-        
-        for directory in possible_dirs:
-            file_path = os.path.join(directory, filename)
-            if os.path.exists(file_path):
-                return FileResponse(file_path)
-        
-        return JSONResponse(
-            status_code=404,
-            content={
-                "errorCode": 4404,
-                "message": "Audio file not found"
+@app.get("/resource/{resource_id}")
+async def get_resource(resource_id: str, request: Request):
+    """资源API - 获取WAV文件"""
+    # 如果resource_id以.wav结尾，直接提供WAV文件
+    if resource_id.endswith(".wav"):
+        md5_part = resource_id[:-4]
+        # 验证是有效的MD5（32字符十六进制）
+        if len(md5_part) == 32 and all(c in "0123456789abcdef" for c in md5_part.lower()):
+            # 在assets目录中查找WAV文件
+            assets_dir = os.path.join(os.path.dirname(__file__), "assets")
+            wav_path = os.path.join(assets_dir, f"{md5_part}.wav")
+            
+            if os.path.exists(wav_path):
+                # 提供WAV文件
+                return FileResponse(wav_path, media_type="audio/wav", filename=f"{md5_part}.wav")
+            else:
+                raise HTTPException(
+                    status_code=200,
+                    detail={
+                        "errorCode": 4530,
+                        "message": "WAV file not found"
+                    }
+                )
+        else:
+            raise HTTPException(
+                status_code=200,
+                detail={
+                    "errorCode": 4531,
+                    "message": "Invalid MD5 format for wav file"
+                }
+            )
+    else:
+        # 如果resource_id是MD5，返回WAV资源URL
+        if len(resource_id) == 32 and all(c in "0123456789abcdef" for c in resource_id.lower()):
+            # 构建WAV URL
+            host = request.url.hostname
+            port = request.url.port
+            scheme = request.url.scheme
+            if port is None or port == 80:
+                wav_url = f"{scheme}://{host}/resource/{resource_id}.wav"
+            else:
+                wav_url = f"{scheme}://{host}:{port}/resource/{resource_id}.wav"
+            
+            return {
+                "errorCode": 0,
+                "message": "success",
+                "wavUrl": wav_url
             }
-        )
-    except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "errorCode": 5000,
-                "message": f"Failed to retrieve audio: {str(e)}"
-            }
-        )
+        else:
+            raise HTTPException(
+                status_code=200,
+                detail={
+                    "errorCode": 4532,
+                    "message": "Invalid resource ID format"
+                }
+            )
 
 @app.get("/apiDoc")
 async def api_doc():
     """API文档"""
-    doc = {
-        "errorCode": 0,
-        "message": "Index-TTS-vLLM API Documentation",
-        "data": {
-            "version": "1.0.0",
-            "endpoints": {
-                "/": "健康检查",
-                "/tts": "WebSocket TTS流式接口",
-                "/uploadAudio": "上传音频文件",
-                "/cloneVoice": "克隆声音",
-                "/getSpeakerVoice/{filename}": "获取说话人音频"
-            },
-            "websocket": {
-                "url": "ws://host:port/tts",
-                "parameters": {
-                    "text": "要合成的文本",
-                    "speakerId": "说话人ID (默认: wm-sample-for-cosy)",
-                    "language": "语言 (zh/zh-cn/en, 可选)",
-                    "audioFormat": "音频格式 (pcm/mp3, 默认: pcm)",
-                    "outputSampleRate": "输出采样率 (默认: 16000)",
-                    "saveAudioFiles": "是否保存音频文件 (默认: false)",
-                    "startTimeId": "开始时间ID (可选)",
-                    "messageId": "消息ID (可选)"
+    try:
+        # 获取HTML文档文件路径
+        html_file_path = os.path.join(os.path.dirname(__file__), "api_documentation.html")
+        
+        # 检查文件是否存在
+        if not os.path.exists(html_file_path):
+            raise HTTPException(
+                status_code=200,
+                detail={
+                    "errorCode": 4540,
+                    "message": "API documentation file not found"
                 }
+            )
+        
+        # 读取并返回HTML内容
+        with open(html_file_path, 'r', encoding='utf-8') as f:
+            html_content = f.read()
+        
+        return HTMLResponse(content=html_content, status_code=200)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=200,
+            detail={
+                "errorCode": 4541,
+                "message": f"Failed to load API documentation: {str(e)}"
             }
-        }
-    }
-    return doc
+        )
 
 def split_text_by_punctuation(text: str, language: str = None) -> list:
     """
@@ -427,6 +601,16 @@ async def websocket_tts(websocket: WebSocket):
     """
     await websocket.accept()
     print(f"[Index-TTS-WS] WebSocket连接已建立")
+    
+    # 添加API密钥验证
+    api_key = websocket.headers.get("x-api-key")
+    if not api_key or api_key not in VALID_API_KEYS:
+        await websocket.send_text(json.dumps({
+            "errorCode": 4401,
+            "message": "Missing or invalid x-api-key header"
+        }))
+        await websocket.close(code=4001, reason="Unauthorized")
+        return
     
     # 存储活动的TTS请求
     active_tts_requests = {}

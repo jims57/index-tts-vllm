@@ -5,12 +5,19 @@ PCM文件合并工具 - 使用ffmpeg合并PCM音频流
 作者: Jimmy Gan
 日期: Nov 24, 2025
 功能: 将savedAudioFiles目录中的所有PCM文件按顺序合并为单个PCM文件
+
+使用示例:
+  python combine_pcm_streams_into_single_pcm.py              # 不清理旧文件
+  python combine_pcm_streams_into_single_pcm.py --clean      # 合并前清理输出目录
+  python combine_pcm_streams_into_single_pcm.py -c           # 合并前清理输出目录（简写）
 """
 
 import os
 import sys
 import subprocess
 import glob
+import argparse
+import shutil
 from pathlib import Path
 from datetime import datetime
 import re
@@ -111,8 +118,48 @@ def combine_pcm_files_with_ffmpeg(pcm_files, output_file, sample_rate=8000):
     print_color("ffmpeg合并成功!", Colors.GREEN)
     return True
 
+def clean_output_directory(output_dir):
+    """
+    清理输出目录中的所有文件
+    
+    Args:
+        output_dir: 输出目录路径
+    """
+    if output_dir.exists():
+        files = list(output_dir.glob('*'))
+        if files:
+            print_color(f"\n清理输出目录: {output_dir}", Colors.YELLOW)
+            for file in files:
+                if file.is_file():
+                    file.unlink()
+                    print_color(f"  已删除: {file.name}", Colors.GREEN)
+            print_color(f"已删除 {len(files)} 个文件", Colors.GREEN)
+        else:
+            print_color(f"输出目录为空，无需清理", Colors.BLUE)
+    else:
+        print_color(f"输出目录不存在，将创建新目录", Colors.BLUE)
+
 def main():
     """主函数"""
+    # 解析命令行参数
+    parser = argparse.ArgumentParser(
+        description='PCM文件合并工具 - 使用ffmpeg合并PCM音频流',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+使用示例:
+  python combine_pcm_streams_into_single_pcm.py              # 不清理旧文件
+  python combine_pcm_streams_into_single_pcm.py --clean      # 合并前清理输出目录
+  python combine_pcm_streams_into_single_pcm.py -c           # 合并前清理输出目录（简写）
+        '''
+    )
+    parser.add_argument(
+        '-c', '--clean',
+        action='store_true',
+        help='合并前清理输出目录中的所有文件'
+    )
+    
+    args = parser.parse_args()
+    
     print_color("="*50, Colors.BLUE)
     print_color("PCM文件合并工具 (使用ffmpeg)", Colors.BLUE)
     print_color("="*50, Colors.BLUE)
@@ -141,6 +188,11 @@ def main():
     
     # 创建输出目录
     output_dir.mkdir(parents=True, exist_ok=True)
+    
+    # 如果指定了--clean参数，清理输出目录
+    if args.clean:
+        clean_output_directory(output_dir)
+    
     print_color("已创建/验证输出目录", Colors.GREEN)
     
     # 查找所有PCM文件

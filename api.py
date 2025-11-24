@@ -2,8 +2,8 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.0.5
-# Changes number: 1
+# Version: 1.0.0
+# Changes number: 5
 """
 
 import argparse

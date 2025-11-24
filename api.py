@@ -3,7 +3,7 @@
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
 # Version: 1.0.5
-# Changes number: 7
+# Changes number: 8
 """
 
 import argparse
@@ -240,7 +240,7 @@ class CloneVoiceRequest(BaseModel):
 
 @app.post("/cloneVoice")
 async def clone_voice(request: Request, body: CloneVoiceRequest, x_api_key: Optional[str] = Header(None)):
-    """克隆声音API"""
+    """克隆声音API - 使用TTS生成音频"""
     print(f"[CloneVoice] Request received: sessionId={body.sessionId}, text length={len(body.text)}")
     
     # 验证API密钥
@@ -294,16 +294,141 @@ async def clone_voice(request: Request, body: CloneVoiceRequest, x_api_key: Opti
         os.makedirs(assets_dir, exist_ok=True)
         print(f"[CloneVoice] Created/verified assets directory: {assets_dir}")
         
-        # 移动WAV文件到assets目录
-        target_wav_path = os.path.join(assets_dir, f"{speaker_id}.wav")
-        shutil.move(found_wav_file, target_wav_path)
-        print(f"[CloneVoice] Moved WAV file to: {target_wav_path}")
+        # 创建临时目录用于存储PCM chunks
+        temp_dir = os.path.join(os.path.dirname(__file__), "temp_clone_audio", speaker_id)
+        os.makedirs(temp_dir, exist_ok=True)
+        print(f"[CloneVoice] Created temp directory: {temp_dir}")
         
-        # 保存文本到txt文件
-        txt_path = os.path.join(assets_dir, f"{speaker_id}.txt")
-        with open(txt_path, 'w', encoding='utf-8') as txt_file:
-            txt_file.write(body.text)
-        print(f"[CloneVoice] Saved text file: {txt_path}")
+        try:
+            # 分割文本为段落
+            text_segments = split_text_by_punctuation(body.text)
+            print(f"[CloneVoice] Split text into {len(text_segments)} segments")
+            
+            # 存储所有PCM文件路径
+            pcm_files = []
+            
+            # 为每个段落生成音频
+            for segment_idx, segment_text in enumerate(text_segments):
+                print(f"[CloneVoice] Generating audio for segment {segment_idx+1}/{len(text_segments)}: {segment_text[:50]}...")
+                
+                try:
+                    # 调用Index-TTS API生成音频（使用找到的WAV文件作为参考）
+                    wav_data = await call_index_tts_api(segment_text, found_wav_file, seed=42)
+                    
+                    # 提取PCM数据
+                    pcm_data = wav_to_pcm(wav_data)
+                    
+                    # Index-TTS默认输出24000Hz，重采样到16000Hz
+                    source_rate = 24000
+                    target_rate = 16000
+                    if source_rate != target_rate:
+                        pcm_data = await resample_audio(pcm_data, source_rate, target_rate)
+                    
+                    # 保存PCM chunk
+                    chunk_filename = f"chunk_{segment_idx+1}.pcm"
+                    chunk_path = os.path.join(temp_dir, chunk_filename)
+                    with open(chunk_path, 'wb') as f:
+                        f.write(pcm_data)
+                    pcm_files.append(chunk_path)
+                    print(f"[CloneVoice] Saved PCM chunk: {chunk_filename} ({len(pcm_data)} bytes)")
+                    
+                except Exception as e:
+                    print(f"[CloneVoice] ERROR generating audio for segment {segment_idx+1}: {e}")
+                    raise HTTPException(
+                        status_code=200,
+                        detail={
+                            "errorCode": 4518,
+                            "message": f"Failed to generate audio for text segment: {str(e)}"
+                        }
+                    )
+            
+            # 使用ffmpeg合并所有PCM文件
+            print(f"[CloneVoice] Combining {len(pcm_files)} PCM files using ffmpeg...")
+            combined_pcm_path = os.path.join(temp_dir, "combined.pcm")
+            
+            # 构建ffmpeg命令
+            input_args = []
+            filter_inputs = []
+            
+            for idx, pcm_file in enumerate(pcm_files):
+                input_args.extend([
+                    '-f', 's16le',      # 输入格式：16位小端PCM
+                    '-ar', '16000',     # 采样率
+                    '-ac', '1',         # 单声道
+                    '-i', pcm_file      # 输入文件
+                ])
+                filter_inputs.append(f'[{idx}:a]')
+            
+            # 构建concat filter
+            concat_filter = f"{''.join(filter_inputs)}concat=n={len(pcm_files)}:v=0:a=1[out]"
+            
+            # 完整的ffmpeg命令
+            cmd = [
+                'ffmpeg',
+                *input_args,
+                '-filter_complex', concat_filter,
+                '-map', '[out]',
+                '-f', 's16le',
+                '-ar', '16000',
+                '-ac', '1',
+                '-y',
+                combined_pcm_path
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                print(f"[CloneVoice] ffmpeg error: {result.stderr}")
+                raise HTTPException(
+                    status_code=200,
+                    detail={
+                        "errorCode": 4519,
+                        "message": f"Failed to combine PCM files: {result.stderr}"
+                    }
+                )
+            
+            print(f"[CloneVoice] Successfully combined PCM files")
+            
+            # 转换合并后的PCM为WAV
+            target_wav_path = os.path.join(assets_dir, f"{speaker_id}.wav")
+            wav_cmd = [
+                'ffmpeg',
+                '-f', 's16le',
+                '-ar', '16000',
+                '-ac', '1',
+                '-i', combined_pcm_path,
+                '-y',
+                target_wav_path
+            ]
+            
+            result = subprocess.run(wav_cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                print(f"[CloneVoice] WAV conversion error: {result.stderr}")
+                raise HTTPException(
+                    status_code=200,
+                    detail={
+                        "errorCode": 4520,
+                        "message": f"Failed to convert PCM to WAV: {result.stderr}"
+                    }
+                )
+            
+            print(f"[CloneVoice] Successfully created WAV file: {target_wav_path}")
+            
+            # 保存文本到txt文件
+            txt_path = os.path.join(assets_dir, f"{speaker_id}.txt")
+            with open(txt_path, 'w', encoding='utf-8') as txt_file:
+                txt_file.write(body.text)
+            print(f"[CloneVoice] Saved text file: {txt_path}")
+            
+        finally:
+            # 清理临时目录
+            try:
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+                    print(f"[CloneVoice] Cleaned up temp directory: {temp_dir}")
+            except Exception as e:
+                print(f"[CloneVoice] Warning: Failed to clean up temp directory: {e}")
         
         # 清理session目录（如果为空）
         try:
@@ -334,6 +459,8 @@ async def clone_voice(request: Request, body: CloneVoiceRequest, x_api_key: Opti
         raise
     except Exception as e:
         print(f"[CloneVoice] ERROR: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=200,
             detail={

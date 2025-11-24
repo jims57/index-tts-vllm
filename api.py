@@ -660,8 +660,8 @@ async def websocket_tts(websocket: WebSocket):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Index-TTS-vLLM API Server')
     parser.add_argument('--port', type=int, default=9001, help='端口号 (默认: 9001)')
-    parser.add_argument('--index-tts-url', type=str, default="http://localhost:7860", 
-                        help='Index-TTS-vLLM服务器URL (默认: http://localhost:7860)')
+    parser.add_argument('--index-tts-url', type=str, default="http://localhost:6006", 
+                        help='Index-TTS-vLLM服务器URL (默认: http://localhost:6006)')
     args = parser.parse_args()
     
     # 更新Index-TTS服务器URL

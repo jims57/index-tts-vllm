@@ -2,8 +2,8 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.0.5
-# Changes number: 8
+# Version: 1.0.7
+# Changes number: 2
 """
 
 import argparse
@@ -15,6 +15,7 @@ import struct
 import re
 import shutil
 import subprocess
+import tempfile
 from typing import Optional
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Header, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse, FileResponse, HTMLResponse
@@ -720,6 +721,63 @@ async def resample_audio(audio_data: bytes, source_rate: int, target_rate: int) 
     
     return resampled.astype(np.int16).tobytes()
 
+async def pcm_to_mp3(pcm_data: bytes, sample_rate: int, bitrate: int = 128) -> bytes:
+    """
+    使用ffmpeg将PCM数据转换为MP3格式
+    
+    Args:
+        pcm_data: PCM音频数据（s16le格式）
+        sample_rate: 采样率
+        bitrate: MP3比特率（kbps，默认128）
+    
+    Returns:
+        MP3格式的音频数据
+    """
+    # 创建临时文件
+    with tempfile.NamedTemporaryFile(suffix='.pcm', delete=False) as pcm_temp:
+        pcm_temp.write(pcm_data)
+        pcm_temp_path = pcm_temp.name
+    
+    with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as mp3_temp:
+        mp3_temp_path = mp3_temp.name
+    
+    try:
+        # 使用ffmpeg转换PCM为MP3
+        cmd = [
+            'ffmpeg',
+            '-f', 's16le',           # 输入格式：16位小端PCM
+            '-ar', str(sample_rate), # 采样率
+            '-ac', '1',              # 单声道
+            '-i', pcm_temp_path,     # 输入文件
+            '-b:a', f'{bitrate}k',   # 比特率
+            '-y',                    # 覆盖输出文件
+            mp3_temp_path
+        ]
+        
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        )
+        
+        if result.returncode != 0:
+            raise Exception(f"ffmpeg conversion failed: {result.stderr}")
+        
+        # 读取MP3数据
+        with open(mp3_temp_path, 'rb') as f:
+            mp3_data = f.read()
+        
+        return mp3_data
+        
+    finally:
+        # 清理临时文件
+        try:
+            os.unlink(pcm_temp_path)
+            os.unlink(mp3_temp_path)
+        except:
+            pass
+
 @app.websocket("/tts")
 async def websocket_tts(websocket: WebSocket):
     """
@@ -974,13 +1032,54 @@ async def websocket_tts(websocket: WebSocket):
                                 print(f"[Index-TTS-WS] 连接不再活动，停止音频传输")
                                 break
                         else:
-                            # MP3格式（需要转换）
-                            # 这里简化处理，实际应该使用ffmpeg等工具转换
-                            await websocket.send_text(json.dumps({
-                                "errorCode": 5001,
-                                "message": "MP3 format not yet supported, please use PCM"
-                            }))
-                            break
+                            # MP3格式 - 使用ffmpeg转换PCM为MP3
+                            try:
+                                # 使用ffmpeg将PCM转换为MP3
+                                mp3_data = await pcm_to_mp3(pcm_data, output_sample_rate)
+                                
+                                # 如果需要消息头，添加头部
+                                if has_message_headers:
+                                    header_bytes = struct.pack('>QI', start_time_id, message_id)
+                                    audio_bytes_with_headers = header_bytes + mp3_data
+                                else:
+                                    audio_bytes_with_headers = mp3_data
+                                
+                                # 保存音频块（如果需要）
+                                if save_audio_files and chunk_save_folder:
+                                    chunk_file_counter += 1
+                                    file_extension = "mp3"
+                                    chunk_filename = f"chunk_{chunk_file_counter}.{file_extension}"
+                                    chunk_path = os.path.join(chunk_save_folder, chunk_filename)
+                                    with open(chunk_path, "wb") as f:
+                                        f.write(audio_bytes_with_headers)
+                                    if has_message_headers:
+                                        print(f"[Index-TTS-WS] 已保存 {chunk_filename} ({len(audio_bytes_with_headers)} 字节，包含12字节头部)")
+                                    else:
+                                        print(f"[Index-TTS-WS] 已保存 {chunk_filename} ({len(audio_bytes_with_headers)} 字节，无头部)")
+                                
+                                audio_chunk = audio_bytes_with_headers
+                                
+                                # 检查连接是否仍然活动
+                                if connection_active:
+                                    try:
+                                        await websocket.send_bytes(audio_chunk)
+                                        chunk_counter += 1
+                                        print(f"[Index-TTS-WS] 已发送MP3音频块 {chunk_counter}, 大小: {len(audio_chunk)} 字节")
+                                    except Exception as send_error:
+                                        print(f"[Index-TTS-WS] 发送音频块错误: {send_error}")
+                                        connection_active = False
+                                        break
+                                else:
+                                    print(f"[Index-TTS-WS] 连接不再活动，停止音频传输")
+                                    break
+                                    
+                            except Exception as mp3_error:
+                                print(f"[Index-TTS-WS] MP3转换错误: {mp3_error}")
+                                await websocket.send_text(json.dumps({
+                                    "errorCode": 5001,
+                                    "message": f"MP3 conversion failed: {str(mp3_error)}"
+                                }))
+                                break
                         
                     except Exception as e:
                         print(f"[Index-TTS-WS] 段落 {segment_idx+1} 生成失败: {str(e)}")

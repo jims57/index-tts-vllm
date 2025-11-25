@@ -2,8 +2,8 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.0.7
-# Changes number: 2
+# Version: 1.2.0
+# Changes number: 1
 """
 
 import argparse
@@ -119,9 +119,21 @@ async def root():
 async def denoise_audio(
     audio: UploadFile = File(...),
     sessionId: str = Form(...),
+    inputSampleRate: int = Form(16000),
+    outputSampleRate: int = Form(16000),
     x_api_key: Optional[str] = Header(None)
 ):
-    """降噪音频API - 简化版本，直接保存WAV文件"""
+    """降噪音频API - 使用RNNoise降噪，支持自定义输入输出采样率
+    
+    参数:
+        audio: PCM音频文件
+        sessionId: 会话ID (UUID格式)
+        inputSampleRate: 输入PCM的采样率 (默认: 16000)
+        outputSampleRate: 输出WAV的采样率 (默认: 16000)
+        x_api_key: API密钥
+    
+    注意: RNNoise内部使用48kHz处理，会自动进行重采样
+    """
     # 验证API密钥
     verify_api_key(x_api_key)
     
@@ -170,15 +182,17 @@ async def denoise_audio(
         # 转换PCM为WAV格式
         wav_path = os.path.join(session_dir, f"{md5_id}.wav")
         
+        print(f"[DenoiseAudio] Input sample rate: {inputSampleRate} Hz, Output sample rate: {outputSampleRate} Hz")
+        
         try:
-            # 使用ffmpeg转换PCM到WAV
+            # 使用ffmpeg转换PCM到WAV (保持输入采样率)
             cmd = [
                 'ffmpeg',
                 '-f', 's16le',  # PCM 16位小端格式
-                '-ar', '16000',  # 输入采样率
+                '-ar', str(inputSampleRate),  # 输入采样率
                 '-ac', '1',      # 输入声道（单声道）
                 '-i', pcm_path,
-                '-ar', '16000',  # 输出采样率
+                '-ar', str(inputSampleRate),  # 输出采样率保持与输入一致
                 '-ac', '1',      # 输出声道（单声道）
                 '-y',            # 覆盖输出文件
                 wav_path
@@ -211,6 +225,34 @@ async def denoise_audio(
                     "message": "WAV file was not created"
                 }
             )
+        
+        # 使用wqDenoiser进行降噪处理
+        denoiser_path = os.path.join(os.path.dirname(__file__), "denoiseAudios", "wqDenoiser")
+        denoised_wav_path = os.path.join(session_dir, f"{md5_id}_denoised.wav")
+        
+        try:
+            # wqDenoiser参数: <input.wav> [output.wav] [inputSampleRate] [outputSampleRate]
+            # wqDenoiser内部使用48kHz处理，会自动进行重采样
+            denoise_cmd = [
+                denoiser_path,
+                wav_path,
+                denoised_wav_path,
+                str(inputSampleRate),   # 输入采样率
+                str(outputSampleRate)   # 输出采样率
+            ]
+            result = subprocess.run(denoise_cmd, capture_output=True, text=True, check=True)
+            print(f"[DenoiseAudio] Denoised audio: {denoised_wav_path} (input: {inputSampleRate}Hz, output: {outputSampleRate}Hz)")
+            
+            # 用降噪后的文件替换原文件
+            if os.path.exists(denoised_wav_path):
+                os.replace(denoised_wav_path, wav_path)
+                print(f"[DenoiseAudio] Replaced original WAV with denoised version")
+        except subprocess.CalledProcessError as e:
+            print(f"[DenoiseAudio] Warning: Denoising failed: {e.stderr}, using original WAV")
+            # 降噪失败时继续使用原始WAV文件
+        except FileNotFoundError:
+            print(f"[DenoiseAudio] Warning: wqDenoiser not found at {denoiser_path}, using original WAV")
+            # 找不到降噪程序时继续使用原始WAV文件
         
         # 清理PCM文件
         if os.path.exists(pcm_path):

@@ -2,7 +2,7 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.2.1
+# Version: 1.3.0
 # Changes number: 1
 """
 
@@ -38,6 +38,10 @@ ignoringDurationInMillisecondsAfterStopTTS = 5000
 # Index-TTS-vLLM服务器配置
 INDEX_TTS_SERVER_URL = "http://localhost:6006"
 
+# TTS服务就绪状态标志（用于健康检查）
+tts_server_ready = False
+tts_server_check_task = None
+
 def verify_api_key(x_api_key: Optional[str] = Header(None)):
     """验证API密钥"""
     if x_api_key not in VALID_API_KEYS:
@@ -48,6 +52,44 @@ def verify_api_key(x_api_key: Optional[str] = Header(None)):
                 "message": "Invalid API key"
             }
         )
+
+async def check_tts_server_ready():
+    """后台任务：每5秒检查api_server.py是否就绪，直到能获取真实TTS流"""
+    global tts_server_ready
+    test_text = "你好"
+    test_speaker = "jay_promptvn"
+    
+    while not tts_server_ready:
+        try:
+            print(f"[Health-Check] 正在检查TTS服务是否就绪...")
+            url = f"{INDEX_TTS_SERVER_URL}/tts_url"
+            payload = {
+                "text": test_text,
+                "audio_paths": [f"assets/{test_speaker}.wav"],
+                "seed": 42
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=60)) as response:
+                    if response.status == 200:
+                        wav_data = await response.read()
+                        # 检查是否为有效的WAV数据（至少有WAV头部）
+                        if len(wav_data) > 44:  # WAV头部至少44字节
+                            tts_server_ready = True
+                            print(f"[Health-Check] TTS服务已就绪！收到{len(wav_data)}字节的WAV数据")
+                            return
+                        else:
+                            print(f"[Health-Check] TTS服务返回数据过小: {len(wav_data)}字节")
+                    else:
+                        error_text = await response.text()
+                        print(f"[Health-Check] TTS服务返回错误: {response.status} - {error_text[:100]}")
+        except asyncio.TimeoutError:
+            print(f"[Health-Check] TTS服务请求超时")
+        except Exception as e:
+            print(f"[Health-Check] TTS服务检查失败: {str(e)}")
+        
+        # 等待5秒后重试
+        await asyncio.sleep(5)
 
 # 初始化FastAPI应用
 app = FastAPI()
@@ -60,6 +102,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def startup_event():
+    """应用启动时开始后台检查TTS服务"""
+    global tts_server_check_task
+    tts_server_check_task = asyncio.create_task(check_tts_server_ready())
 
 # 从文件头获取版本信息
 with open(__file__, 'r', encoding='utf-8') as f:
@@ -109,7 +157,17 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.api_route("/", methods=["GET", "HEAD"])
 async def root():
-    """根路径健康检查"""
+    """根路径健康检查 - 只有当TTS服务就绪时才返回健康"""
+    global tts_server_ready
+    if not tts_server_ready:
+        # 返回503表示TTS服务未就绪，ALB不会将用户请求转发到此实例
+        return JSONResponse(
+            status_code=503,
+            content={
+                "errorCode": 5003,
+                "message": "TTS service is not ready yet, model is still loading"
+            }
+        )
     return {
         "errorCode": 0,
         "message": "Index-TTS-vLLM API is running"

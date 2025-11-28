@@ -1,0 +1,10 @@
+/mnt/index-tts-vllm/logs/api-server-py.log {
+    daily
+    rotate 15
+    compress
+    dateext
+    copytruncate
+    missingok
+    notifempty
+    create 0644 root root
+}

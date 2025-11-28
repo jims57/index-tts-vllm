@@ -2,7 +2,7 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.2.0
+# Version: 1.2.1
 # Changes number: 1
 """
 
@@ -1007,6 +1007,8 @@ async def websocket_tts(websocket: WebSocket):
                 # 跟踪是否被停止
                 stop_requested = False
                 chunk_counter = 0
+                # 跟踪是否有音频成功发送（用于判断是否发送完成信号）
+                has_audio_sent = False
                 
                 # 处理每个文本段落
                 for segment_idx, segment_text in enumerate(text_segments):
@@ -1065,6 +1067,7 @@ async def websocket_tts(websocket: WebSocket):
                                 try:
                                     await websocket.send_bytes(audio_chunk)
                                     chunk_counter += 1
+                                    has_audio_sent = True
                                     print(f"[Index-TTS-WS] 已发送PCM音频块 {chunk_counter}, 大小: {len(audio_chunk)} 字节")
                                 except Exception as send_error:
                                     print(f"[Index-TTS-WS] 发送音频块错误: {send_error}")
@@ -1106,6 +1109,7 @@ async def websocket_tts(websocket: WebSocket):
                                     try:
                                         await websocket.send_bytes(audio_chunk)
                                         chunk_counter += 1
+                                        has_audio_sent = True
                                         print(f"[Index-TTS-WS] 已发送MP3音频块 {chunk_counter}, 大小: {len(audio_chunk)} 字节")
                                     except Exception as send_error:
                                         print(f"[Index-TTS-WS] 发送音频块错误: {send_error}")
@@ -1131,8 +1135,8 @@ async def websocket_tts(websocket: WebSocket):
                         }))
                         break
                 
-                # 发送完成信号（空流）仅在未停止时
-                if not stop_requested and connection_active:
+                # 发送完成信号（空流）仅在未停止且有音频成功发送时
+                if not stop_requested and connection_active and has_audio_sent:
                     try:
                         if has_message_headers:
                             # 发送带头部的空流 (12字节头部 + 0音频字节)

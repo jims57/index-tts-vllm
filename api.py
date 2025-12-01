@@ -2,8 +2,8 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.4.1
-# Changes number: 2
+# Version: 1.4.2
+# Changes number: 3
 """
 
 import argparse
@@ -718,12 +718,12 @@ def split_text_by_punctuation(text: str, language: str = None) -> list:
     if not segments:
         segments = [text]
     
-    # 合并过短的段落以提高质量
+    # 合并过短的段落以提高质量（阈值设为3，允许短中文短语保持独立）
     combined_segments = []
     current_combined = ""
     
     for segment in segments:
-        if len(segment) < 5 or not current_combined:
+        if len(segment) < 3 or not current_combined:
             current_combined += " " + segment if current_combined else segment
         else:
             combined_segments.append(current_combined)

@@ -3,582 +3,195 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TTS 克隆服务 API 文档</title>
+    <title>Index-TTS-vLLM API 文档</title>
     <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
-            margin: 0;
-            padding: 20px;
-            background-color: #f5f5f5;
-            color: #333;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background-color: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        .contact-notice {
-            background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
-            color: white;
-            padding: 15px 20px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-            text-align: center;
-            font-size: 1.1em;
-        }
-        h1 {
-            color: #2c3e50;
-            text-align: center;
-            margin-bottom: 10px;
-            font-size: 2.5em;
-        }
-        .subtitle {
-            text-align: center;
-            color: #7f8c8d;
-            margin-bottom: 30px;
-            font-size: 1.1em;
-        }
-        .api-section {
-            margin-bottom: 20px;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        .api-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 15px 20px;
-            cursor: pointer;
-            font-weight: bold;
-            font-size: 1.1em;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .api-header:hover {
-            background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
-        }
-        .api-content {
-            display: none;
-            padding: 20px;
-            background-color: #fafafa;
-        }
-        .method {
-            background-color: #27ae60;
-            color: white;
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.9em;
-            font-weight: bold;
-        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; margin: 0; padding: 20px; background-color: #f5f5f5; color: #333; }
+        .container { max-width: 1200px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .contact-notice { background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%); color: white; padding: 15px 20px; border-radius: 8px; margin-bottom: 30px; text-align: center; font-size: 1.1em; }
+        h1 { color: #2c3e50; text-align: center; margin-bottom: 10px; font-size: 2.5em; }
+        .subtitle { text-align: center; color: #7f8c8d; margin-bottom: 30px; font-size: 1.1em; }
+        .api-section { margin-bottom: 20px; border: 1px solid #ddd; border-radius: 8px; overflow: hidden; }
+        .api-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 20px; cursor: pointer; font-weight: bold; font-size: 1.1em; display: flex; justify-content: space-between; align-items: center; }
+        .api-header:hover { background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%); }
+        .api-content { display: none; padding: 20px; background-color: #fafafa; }
+        .method { background-color: #27ae60; color: white; padding: 4px 8px; border-radius: 4px; font-size: 0.9em; font-weight: bold; }
         .method.post { background-color: #e74c3c; }
         .method.get { background-color: #3498db; }
-        .endpoint {
-            font-family: 'Courier New', monospace;
-            background-color: #ecf0f1;
-            padding: 8px 12px;
-            border-radius: 4px;
-            margin: 10px 0;
-            font-weight: bold;
-        }
-        .code-block {
-            background-color: #2c3e50;
-            color: #ecf0f1;
-            padding: 15px;
-            border-radius: 6px;
-            overflow-x: auto;
-            margin: 10px 0;
-            font-family: 'Courier New', monospace;
-            font-size: 0.9em;
-            white-space: pre-wrap;
-        }
+        .method.ws { background-color: #9b59b6; }
+        .code-block { background-color: #2c3e50; color: #ecf0f1; padding: 15px; border-radius: 6px; overflow-x: auto; margin: 10px 0; font-family: 'Courier New', monospace; font-size: 0.9em; white-space: pre-wrap; }
         .success { border-left: 4px solid #27ae60; }
         .error { border-left: 4px solid #e74c3c; }
         .warning { border-left: 4px solid #f39c12; }
         .info { border-left: 4px solid #3498db; }
-        .parameter {
-            background-color: #fff;
-            border: 1px solid #ddd;
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 4px;
-        }
-        .param-name {
-            font-weight: bold;
-            color: #2c3e50;
-        }
-        .param-type {
-            color: #8e44ad;
-            font-style: italic;
-        }
-        .error-codes {
-            margin-top: 15px;
-        }
-        .error-code {
-            background-color: #fff5f5;
-            border: 1px solid #fed7d7;
-            padding: 8px;
-            margin: 5px 0;
-            border-radius: 4px;
-        }
-        .toggle-icon {
-            transition: transform 0.3s ease;
-        }
-        .toggle-icon.expanded {
-            transform: rotate(90deg);
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 10px 0;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f8f9fa;
-            font-weight: bold;
-        }
+        .parameter { background-color: #fff; border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 4px; }
+        .param-name { font-weight: bold; color: #2c3e50; }
+        .param-type { color: #8e44ad; font-style: italic; }
+        .error-code { background-color: #fff5f5; border: 1px solid #fed7d7; padding: 8px; margin: 5px 0; border-radius: 4px; }
+        .toggle-icon { transition: transform 0.3s ease; }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="contact-notice">
-            📞 如需获取API密钥，请联系Jimmy开发者
-        </div>
-        
-        <h1>🎙️ TTS 克隆服务 API 文档</h1>
-        <p class="subtitle">作者：Jimmy Gan | 更新时间：2025-07-23</p>
-        
-        <!-- API 1: 克隆语音 -->
+        <div class="contact-notice">如需获取API密钥，请联系Jimmy开发者</div>
+        <h1>Index-TTS-vLLM API 文档</h1>
+        <p class="subtitle">作者：Jimmy Gan | 版本：1.4.2 | 更新时间：2025-12-01</p>
+
+        <!-- 健康检查 -->
         <div class="api-section">
             <div class="api-header" onclick="toggleSection(this)">
-                <div>
-                    <span class="method post">POST</span>
-                    <span>/cloneVoice - 克隆语音接口</span>
-                </div>
+                <div><span class="method get">GET</span> <span>/ - 健康检查接口</span></div>
                 <span class="toggle-icon">▶</span>
             </div>
             <div class="api-content">
-                <h3>📋 接口描述</h3>
-                <p>检查会话中的降噪音频文件并生成语音克隆模型，返回speaker ID</p>
-                
-                <h3>📊 请求参数</h3>
-                <div class="parameter">
-                    <span class="param-name">Content-Type</span> 
-                    <span class="param-type">(Header, 必需)</span> - application/json
-                </div>
-                <div class="parameter">
-                    <span class="param-name">x-api-key</span> 
-                    <span class="param-type">(Header, 必需)</span> - API密钥
-                </div>
-                
-                <h4>📝 JSON请求体</h4>
-                <div class="parameter">
-                    <span class="param-name">text</span> 
-                    <span class="param-type">(String, 必需)</span> - 文本内容 (最少15个字符/单词)
-                </div>
-                <div class="parameter">
-                    <span class="param-name">sessionId</span> 
-                    <span class="param-type">(String, 必需)</span> - UUID会话标识符（必须为有效UUID格式，如 69361790-4120-49de-8c37-58c3e3eaf388）
-                </div>
-                
-                <h3>📤 请求示例</h3>
-                <div class="code-block info">
-POST /cloneVoice
-Content-Type: application/json
-x-api-key: sk-demo1234567890abcdef1234567890abcd
-
-{
-    "text": "你好，这是一段用于语音克隆的测试文本，包含了足够的字符数量。",
-    "sessionId": "a1b2c3d4-e5f6-7890-1234-567890abcdef"
-}
-                </div>
-                
-                <h3>✅ 成功响应示例</h3>
-                <div class="code-block success">
-{
-    "errorCode": 0,
-    "message": "Voice cloned successfully",
-    "speakerId": "47e38dc7e8e8223b4f2c8e91a3b1d6f9",
-    "mp3Url": "http://tts-clone.watchfun.cn/resource/47e38dc7e8e8223b4f2c8e91a3b1d6f9.mp3",
-    "text": "你好，这是一段测试文本。"
-}
-                </div>
-                
-                <h3>❌ 错误响应</h3>
-                <div class="error-codes">
-                    <div class="error-code">
-                        <strong>4400:</strong> 请求参数无效<br>
-                        <code>{"errorCode": 4400, "message": "Invalid request parameters"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4401:</strong> API密钥无效<br>
-                        <code>{"errorCode": 4401, "message": "Invalid API key"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4422:</strong> JSON格式错误<br>
-                        <code>{"errorCode": 4422, "message": "Validation error: missing required fields"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4516:</strong> 未找到降噪音频文件<br>
-                        <code>{"errorCode": 4516, "message": "No denoised WAV file found in session after 10 seconds. Please ensure audio denoising is completed first."}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4512:</strong> 服务器内部错误<br>
-                        <code>{"errorCode": 4512, "message": "Internal server error: ..."}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4608:</strong> sessionId格式无效<br>
-                        <code>{"errorCode": 4608, "message": "sessionId must be a valid UUID string, e.g. 69361790-4120-49de-8c37-58c3e3eaf388"}</code>
-                    </div>
-                </div>
-                
-                <h3>🔧 使用示例 (curl)</h3>
-                <div class="code-block">
-curl -X POST "http://tts-clone.watchfun.cn/cloneVoice" \
-  -H "Content-Type: application/json" \
-  -H "x-api-key: sk-demo1234567890abcdef1234567890abcd" \
-  -d '{
-    "text": "你好，这是一段用于语音克隆的测试文本，包含了足够的字符数量。",
-    "sessionId": "a1b2c3d4-e5f6-7890-1234-567890abcdef"
-  }'
-                </div>
+                <h3>接口描述</h3>
+                <p>检查TTS服务是否就绪。只有当TTS模型加载完成后才返回健康状态。</p>
+                <h3>成功响应 (TTS服务就绪)</h3>
+                <div class="code-block success">{"errorCode": 0, "message": "Index-TTS-vLLM API is running"}</div>
+                <h3>错误响应 (TTS服务未就绪, HTTP 503)</h3>
+                <div class="code-block error">{"errorCode": 5003, "message": "TTS service is not ready yet, model is still loading"}</div>
             </div>
         </div>
 
-        <!-- API 2: 音频降噪 -->
+        <!-- WebSocket TTS -->
         <div class="api-section">
             <div class="api-header" onclick="toggleSection(this)">
-                <div>
-                    <span class="method post">POST</span>
-                    <span>/denoiseAudio - 音频降噪接口</span>
-                </div>
+                <div><span class="method ws">WebSocket</span> <span>/tts - TTS流式合成接口</span></div>
                 <span class="toggle-icon">▶</span>
             </div>
             <div class="api-content">
-                <h3>📋 接口描述</h3>
-                <p>上传PCM音频文件进行降噪处理，为语音克隆做准备</p>
-                
-                <h3>📊 请求参数</h3>
-                <div class="parameter">
-                    <span class="param-name">audio</span> 
-                    <span class="param-type">(File, 必需)</span> - PCM音频文件 (16kHz单声道，仅支持.pcm格式)
-                </div>
-                <div class="parameter">
-                    <span class="param-name">sessionId</span> 
-                    <span class="param-type">(String, 必需)</span> - UUID会话标识符（必须为有效UUID格式，如 69361790-4120-49de-8c37-58c3e3eaf388）
-                </div>
-                <div class="parameter">
-                    <span class="param-name">x-api-key</span> 
-                    <span class="param-type">(Header, 必需)</span> - API密钥
-                </div>
-                
-                <h3>📝 格式要求</h3>
-                <div class="warning">
-                    <p>• <strong>文件格式：</strong>仅支持 .pcm 文件</p>
-                    <p>• <strong>采样率：</strong>16kHz</p>
-                    <p>• <strong>声道：</strong>单声道</p>
-                    <p>• <strong>位深：</strong>16位</p>
-                </div>
-                
-                <h3>✅ 成功响应示例</h3>
-                <div class="code-block success">
-{
-    "errorCode": 0,
-    "message": "Audio denoised successfully",
-    "sessionId": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
-    "speakerId": "47e38dc7e8e8223b4f2c8e91a3b1d6f9"
-}
-                </div>
-                
-                <h3>❌ 错误响应</h3>
-                <div class="error-codes">
-                    <div class="error-code">
-                        <strong>4609:</strong> 文件格式不支持<br>
-                        <code>{"errorCode": 4609, "message": "Only PCM files are allowed. Please upload a .pcm file."}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4401:</strong> API密钥无效<br>
-                        <code>{"errorCode": 4401, "message": "Invalid API key"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4610:</strong> PCM转WAV失败<br>
-                        <code>{"errorCode": 4610, "message": "Failed to convert PCM to WAV: ..."}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4611:</strong> ffmpeg未找到<br>
-                        <code>{"errorCode": 4611, "message": "ffmpeg not found"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4612:</strong> 音频降噪失败<br>
-                        <code>{"errorCode": 4612, "message": "Failed to denoise audio: ..."}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4613:</strong> 降噪器程序未找到<br>
-                        <code>{"errorCode": 4613, "message": "wqDenoiser executable not found"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4614:</strong> 降噪文件未创建<br>
-                        <code>{"errorCode": 4614, "message": "Denoised audio file was not created"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4615:</strong> 服务器内部错误<br>
-                        <code>{"errorCode": 4615, "message": "Internal server error: ..."}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4608:</strong> sessionId格式无效<br>
-                        <code>{"errorCode": 4608, "message": "sessionId must be a valid UUID string, e.g. 69361790-4120-49de-8c37-58c3e3eaf388"}</code>
-                    </div>
-                </div>
-                
-                <h3>🔧 使用示例 (curl)</h3>
-                <div class="code-block">
-curl -X POST "http://tts-clone.watchfun.cn/denoiseAudio" \
-  -H "x-api-key: sk-demo1234567890abcdef1234567890abcd" \
-  -F "audio=@sample_audio.pcm" \
-  -F "sessionId=a1b2c3d4-e5f6-7890-1234-567890abcdef"
-                </div>
+                <h3>接口描述</h3>
+                <p>WebSocket流式TTS接口，支持实时语音合成。连接后可发送多个TTS请求，支持停止正在进行的TTS生成。</p>
+                <h3>连接参数</h3>
+                <div class="parameter"><span class="param-name">x-api-key</span> <span class="param-type">(Header, 必需)</span> - API密钥</div>
+                <h4>JSON请求体参数</h4>
+                <div class="parameter"><span class="param-name">text</span> <span class="param-type">(String, 必需)</span> - 要合成的文本内容</div>
+                <div class="parameter"><span class="param-name">speakerId</span> <span class="param-type">(String, 可选)</span> - 说话人ID或音频文件路径，默认: "4582b310374bcb6633f2d459bd29811c"</div>
+                <div class="parameter"><span class="param-name">outputSampleRate</span> <span class="param-type">(Integer, 可选)</span> - 输出采样率，默认: 16000</div>
+                <div class="parameter"><span class="param-name">audioFormat</span> <span class="param-type">(String, 可选)</span> - 音频格式 "pcm" 或 "mp3"，默认: "pcm"</div>
+                <div class="parameter"><span class="param-name">startTimeId</span> <span class="param-type">(Integer, 可选)</span> - 开始时间ID，用于音频块头部</div>
+                <div class="parameter"><span class="param-name">messageId</span> <span class="param-type">(Integer, 可选)</span> - 消息ID，用于音频块头部和停止控制</div>
+                <div class="parameter"><span class="param-name">saveAudioFiles</span> <span class="param-type">(Boolean, 可选)</span> - 是否保存音频文件到服务器，默认: false</div>
+                <div class="parameter"><span class="param-name">language</span> <span class="param-type">(String, 可选)</span> - 语言代码 "zh", "zh-cn", "en"</div>
+                <div class="parameter"><span class="param-name">seed</span> <span class="param-type">(Integer, 可选)</span> - 随机种子，默认: 42</div>
+                <h3>TTS请求示例</h3>
+                <div class="code-block info">{"text": "今天的天气怎么样？", "speakerId": "d10bb92ab03c9e8c301a3ab2ca11fba3", "language": "zh", "audioFormat": "mp3", "outputSampleRate": 16000, "startTimeId": 1234567890, "messageId": 1}</div>
+                <h3>停止TTS请求示例</h3>
+                <div class="code-block warning">{"task": "stopTTS", "messageId": 1}</div>
+                <h3>响应格式</h3>
+                <p>成功时返回二进制音频数据流。当提供startTimeId和messageId时，每个音频块前有12字节头部：8字节startTimeId + 4字节messageId，后续为音频数据。TTS完成时发送空音频块作为完成信号。</p>
+                <h3>错误响应</h3>
+                <div class="error-code"><strong>4401:</strong> API密钥无效</div>
+                <div class="error-code"><strong>4400:</strong> 参数无效 (text is required)</div>
+                <div class="error-code"><strong>5000:</strong> TTS生成失败</div>
+                <div class="error-code"><strong>5001:</strong> MP3转换失败</div>
             </div>
         </div>
 
-        <!-- API 3: 获取说话人信息 -->
+        <!-- 音频降噪 -->
         <div class="api-section">
             <div class="api-header" onclick="toggleSection(this)">
-                <div>
-                    <span class="method get">GET</span>
-                    <span>/getSpeakerInfo/{speaker_id} - 获取说话人信息</span>
-                </div>
+                <div><span class="method post">POST</span> <span>/denoiseAudio - 音频降噪接口</span></div>
                 <span class="toggle-icon">▶</span>
             </div>
             <div class="api-content">
-                <h3>📋 接口描述</h3>
-                <p>根据speaker ID获取对应的音频文件URL和文本内容</p>
-                
-                <h3>📊 请求参数</h3>
-                <div class="parameter">
-                    <span class="param-name">speaker_id</span> 
-                    <span class="param-type">(Path, 必需)</span> - 32位MD5字符串
-                </div>
-                <div class="parameter">
-                    <span class="param-name">x-api-key</span> 
-                    <span class="param-type">(Header, 必需)</span> - API密钥
-                </div>
-                
-                <h3>✅ 成功响应示例</h3>
-                <div class="code-block success">
-{
-    "errorCode": 0,
-    "message": "success",
-    "wavUrl": "http://tts-clone.watchfun.cn/resource/47e38dc7e8e8223b4f2c8e91a3b1d6f9.wav",
-    "text": "你好，这是一段测试文本。"
-}
-                </div>
-                
-                <h3>❌ 错误响应</h3>
-                <div class="error-codes">
-                    <div class="error-code">
-                        <strong>4400:</strong> 请求参数无效<br>
-                        <code>{"errorCode": 4400, "message": "Invalid request parameters"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4407:</strong> speaker ID格式无效<br>
-                        <code>{"errorCode": 4407, "message": "Invalid speaker ID format"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4401:</strong> API密钥无效<br>
-                        <code>{"errorCode": 4401, "message": "Invalid API key"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4406:</strong> 说话人未找到<br>
-                        <code>{"errorCode": 4406, "message": "Speaker not found"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4520:</strong> 读取文本文件失败<br>
-                        <code>{"errorCode": 4520, "message": "Failed to read text file: ..."}</code>
-                    </div>
-                </div>
+                <h3>接口描述</h3>
+                <p>上传PCM音频文件进行降噪处理，为语音克隆做准备。使用RNNoise进行降噪，支持自定义输入输出采样率。</p>
+                <h3>请求参数</h3>
+                <div class="parameter"><span class="param-name">audio</span> <span class="param-type">(File, 必需)</span> - PCM音频文件 (仅支持.pcm格式)</div>
+                <div class="parameter"><span class="param-name">sessionId</span> <span class="param-type">(String, 必需)</span> - UUID会话标识符</div>
+                <div class="parameter"><span class="param-name">inputSampleRate</span> <span class="param-type">(Integer, 可选)</span> - 输入PCM采样率，默认: 16000</div>
+                <div class="parameter"><span class="param-name">outputSampleRate</span> <span class="param-type">(Integer, 可选)</span> - 输出WAV采样率，默认: 16000</div>
+                <div class="parameter"><span class="param-name">x-api-key</span> <span class="param-type">(Header, 必需)</span> - API密钥</div>
+                <h3>格式要求</h3>
+                <p>文件格式：仅支持 .pcm 文件 | 位深：16位小端格式 | 声道：单声道</p>
+                <h3>成功响应示例</h3>
+                <div class="code-block success">{"errorCode": 0, "message": "Audio denoised successfully", "sessionId": "a1b2c3d4-e5f6-7890-1234-567890abcdef", "speakerId": "47e38dc7e8e8223b4f2c8e91a3b1d6f9"}</div>
+                <h3>错误响应</h3>
+                <div class="error-code"><strong>4608:</strong> sessionId格式无效</div>
+                <div class="error-code"><strong>4609:</strong> 文件格式不支持</div>
+                <div class="error-code"><strong>4610:</strong> PCM转WAV失败</div>
+                <div class="error-code"><strong>4611:</strong> ffmpeg未找到</div>
+                <div class="error-code"><strong>4614:</strong> WAV文件未创建</div>
+                <div class="error-code"><strong>4615:</strong> 服务器内部错误</div>
             </div>
         </div>
 
-        <!-- API 4: 获取默认说话人列表 -->
+        <!-- 克隆语音 -->
         <div class="api-section">
             <div class="api-header" onclick="toggleSection(this)">
-                <div>
-                    <span class="method get">GET</span>
-                    <span>/getDefaultSpeakerList - 获取默认说话人列表</span>
-                </div>
+                <div><span class="method post">POST</span> <span>/cloneVoice - 克隆语音接口</span></div>
                 <span class="toggle-icon">▶</span>
             </div>
             <div class="api-content">
-                <h3>📋 接口描述</h3>
-                <p>获取系统预设的默认说话人列表，数据来源于CosyVoice服务</p>
-                
-                <h3>📊 请求参数</h3>
-                <div class="parameter">
-                    <span class="param-name">x-api-key</span> 
-                    <span class="param-type">(Header, 必需)</span> - API密钥
-                </div>
-                
-                <h3>✅ 成功响应示例</h3>
-                <div class="code-block success">
-{
-    "errorCode": 0,
-    "message": "success",
-    "speakerList": [
-        {
-            "speakerId": 3,
-            "mp3Url": "http://cosy.watchfun.cn/speaker/3.mp3"
-        },
-        {
-            "speakerId": 2,
-            "mp3Url": "http://cosy.watchfun.cn/speaker/2.mp3"
-        }
-    ]
-}
-                </div>
-                
-                <h3>❌ 错误响应</h3>
-                <div class="error-codes">
-                    <div class="error-code">
-                        <strong>4400:</strong> 请求参数无效<br>
-                        <code>{"errorCode": 4400, "message": "Invalid request parameters"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4401:</strong> API密钥无效<br>
-                        <code>{"errorCode": 4401, "message": "Invalid API key"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4502:</strong> 连接CosyVoice API失败<br>
-                        <code>{"errorCode": 4502, "message": "Failed to connect to CosyVoice API: ..."}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4503:</strong> 服务器内部错误<br>
-                        <code>{"errorCode": 4503, "message": "Internal server error: ..."}</code>
-                    </div>
-                </div>
+                <h3>接口描述</h3>
+                <p>使用会话中的降噪音频文件生成语音克隆，返回speaker ID和WAV文件URL。</p>
+                <h3>请求参数</h3>
+                <div class="parameter"><span class="param-name">Content-Type</span> <span class="param-type">(Header)</span> - application/json</div>
+                <div class="parameter"><span class="param-name">x-api-key</span> <span class="param-type">(Header, 必需)</span> - API密钥</div>
+                <div class="parameter"><span class="param-name">text</span> <span class="param-type">(String, 必需)</span> - 要合成的文本内容</div>
+                <div class="parameter"><span class="param-name">sessionId</span> <span class="param-type">(String, 必需)</span> - UUID会话标识符（需先调用denoiseAudio）</div>
+                <h3>成功响应示例</h3>
+                <div class="code-block success">{"errorCode": 0, "message": "Voice cloned successfully", "speakerId": "47e38dc7e8e8223b4f2c8e91a3b1d6f9", "wavUrl": "http://your-server:9001/resource/47e38dc7e8e8223b4f2c8e91a3b1d6f9.wav", "text": "你好"}</div>
+                <h3>错误响应</h3>
+                <div class="error-code"><strong>4401:</strong> API密钥无效</div>
+                <div class="error-code"><strong>4608:</strong> sessionId格式无效</div>
+                <div class="error-code"><strong>4516:</strong> 未找到降噪音频文件</div>
+                <div class="error-code"><strong>4517:</strong> 克隆失败</div>
+                <div class="error-code"><strong>4518:</strong> 音频生成失败</div>
+                <div class="error-code"><strong>4519:</strong> PCM合并失败</div>
+                <div class="error-code"><strong>4520:</strong> WAV转换失败</div>
             </div>
         </div>
 
-        <!-- API 5: 资源访问接口 -->
+        <!-- 资源访问 -->
         <div class="api-section">
             <div class="api-header" onclick="toggleSection(this)">
-                <div>
-                    <span class="method get">GET</span>
-                    <span>/resource/{resource_id} - 资源访问接口</span>
-                </div>
+                <div><span class="method get">GET</span> <span>/resource/{resource_id} - 资源访问接口</span></div>
                 <span class="toggle-icon">▶</span>
             </div>
             <div class="api-content">
-                <h3>📋 接口描述</h3>
-                <p>多功能资源接口，支持获取MP3 URL、直接下载WAV/MP3文件</p>
-                
-                <h3>❌ 错误响应</h3>
-                <div class="error-codes">
-                    <div class="error-code">
-                        <strong>4400:</strong> 请求参数无效 (仅限获取URL时)<br>
-                        <code>{"errorCode": 4400, "message": "Invalid request parameters"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4401:</strong> API密钥无效 (仅限获取URL时)<br>
-                        <code>{"errorCode": 4401, "message": "Invalid API key"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4530:</strong> WAV文件未找到<br>
-                        <code>{"errorCode": 4530, "message": "WAV file not found"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4531:</strong> WAV文件MD5格式无效<br>
-                        <code>{"errorCode": 4531, "message": "Invalid MD5 format for wav file"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4532:</strong> WAV转MP3失败<br>
-                        <code>{"errorCode": 4532, "message": "Failed to convert WAV to MP3"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4533:</strong> ffmpeg未找到<br>
-                        <code>{"errorCode": 4533, "message": "ffmpeg not found"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4534:</strong> MP3文件未找到<br>
-                        <code>{"errorCode": 4534, "message": "MP3 file not found"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4535:</strong> MP3文件MD5格式无效<br>
-                        <code>{"errorCode": 4535, "message": "Invalid MD5 format for mp3 file"}</code>
-                    </div>
-                    <div class="error-code">
-                        <strong>4536:</strong> 资源ID格式无效<br>
-                        <code>{"errorCode": 4536, "message": "Invalid resource id format"}</code>
-                    </div>
-                </div>
+                <h3>接口描述</h3>
+                <p>获取WAV音频文件或WAV文件URL。</p>
+                <h3>请求格式</h3>
+                <div class="parameter"><span class="param-name">/resource/{md5}.wav</span> - 直接下载WAV文件（无需API密钥）</div>
+                <div class="parameter"><span class="param-name">/resource/{md5}</span> - 获取WAV文件URL（返回JSON）</div>
+                <h3>成功响应示例</h3>
+                <div class="code-block success">{"errorCode": 0, "message": "success", "wavUrl": "http://your-server:9001/resource/47e38dc7e8e8223b4f2c8e91a3b1d6f9.wav"}</div>
+                <h3>错误响应</h3>
+                <div class="error-code"><strong>4530:</strong> WAV文件未找到</div>
+                <div class="error-code"><strong>4531:</strong> MD5格式无效</div>
+                <div class="error-code"><strong>4532:</strong> 资源ID格式无效</div>
             </div>
         </div>
 
         <!-- 格式示例 -->
         <div class="api-section">
             <div class="api-header" onclick="toggleSection(this)">
-                <div>
-                    <span class="method">📋</span>
-                    <span>格式示例</span>
-                </div>
+                <div><span class="method">FORMAT</span> <span>格式示例</span></div>
                 <span class="toggle-icon">▶</span>
             </div>
             <div class="api-content">
-                <h3>🔑 UUID格式示例</h3>
-                <p>UUID (Universally Unique Identifier) 是128位的标识符，通常用32个十六进制数字表示，用连字符分隔：</p>
-                <div class="code-block">
-标准UUID格式: a1b2c3d4-e5f6-7890-1234-567890abcdef
-UUID v4示例: 550e8400-e29b-41d4-a716-446655440000
-UUID v4示例: 6ba7b810-9dad-11d1-80b4-00c04fd430c8
-                </div>
-                
-                <h3>🔢 MD5格式示例</h3>
-                <p>MD5 (Message Digest Algorithm 5) 是128位的哈希值，用32个十六进制字符表示：</p>
-                <div class="code-block">
-MD5示例: 47e38dc7e8e8223b4f2c8e91a3b1d6f9
-MD5示例: d41d8cd98f00b204e9800998ecf8427e
-MD5示例: 5d41402abc4b2a76b9719d911017c592
-                </div>
-                
-                <h3>📝 使用说明</h3>
-                <div class="info">
-                    <p>• <strong>UUID:</strong> 用于会话标识，确保每个音频处理会话的唯一性</p>
-                    <p>• <strong>MD5:</strong> 用于生成speaker ID，确保音频文件的唯一标识</p>
-                    <p>• <strong>格式验证:</strong> 系统会自动验证UUID和MD5的格式正确性</p>
-                </div>
+                <h3>UUID格式示例</h3>
+                <p>UUID用于sessionId，格式为32个十六进制数字用连字符分隔：</p>
+                <div class="code-block">a1b2c3d4-e5f6-7890-1234-567890abcdef</div>
+                <h3>MD5格式示例</h3>
+                <p>MD5用于speakerId，格式为32个十六进制字符：</p>
+                <div class="code-block">d10bb92ab03c9e8c301a3ab2ca11fba3</div>
             </div>
         </div>
 
         <!-- 认证信息 -->
         <div class="api-section">
             <div class="api-header" onclick="toggleSection(this)">
-                <div>
-                    <span class="method">🔐</span>
-                    <span>认证信息</span>
-                </div>
+                <div><span class="method">AUTH</span> <span>认证信息</span></div>
                 <span class="toggle-icon">▶</span>
             </div>
             <div class="api-content">
-                <h3>🔑 API密钥示例</h3>
+                <h3>API密钥</h3>
                 <p>请在HTTP请求头中包含有效的API密钥：</p>
-                <div class="code-block">
-x-api-key: sk-demo1234567890abcdef1234567890abcd
-                </div>
-                
-                <h3>⚠️ 认证说明</h3>
-                <div class="warning">
-                    <p>• 除了直接访问音频文件外，所有API都需要有效的API密钥</p>
-                    <p>• 直接访问 .wav 和 .mp3 文件无需API密钥认证</p>
-                    <p>• API密钥应作为HTTP请求头 x-api-key 发送</p>
-                    <p>• 上述示例中的API密钥仅为演示，实际使用请联系Jimmy获取真实密钥</p>
-                </div>
+                <div class="code-block">x-api-key: your-api-key</div>
+                <h3>认证说明</h3>
+                <p>- 所有API都需要有效的API密钥（除了直接下载.wav文件）<br>- WebSocket连接需要在Header中提供x-api-key<br>- 直接访问 /resource/{md5}.wav 无需API密钥<br>- 如需获取API密钥，请联系Jimmy开发者</p>
             </div>
         </div>
     </div>
@@ -587,24 +200,16 @@ x-api-key: sk-demo1234567890abcdef1234567890abcd
         function toggleSection(header) {
             const content = header.nextElementSibling;
             const icon = header.querySelector('.toggle-icon');
-            
             if (content.style.display === 'none' || content.style.display === '') {
                 content.style.display = 'block';
                 icon.textContent = '▼';
-                icon.classList.add('expanded');
             } else {
                 content.style.display = 'none';
                 icon.textContent = '▶';
-                icon.classList.remove('expanded');
             }
         }
-        
-        // 默认折叠所有区域
         document.addEventListener('DOMContentLoaded', function() {
-            const contents = document.querySelectorAll('.api-content');
-            contents.forEach(content => {
-                content.style.display = 'none';
-            });
+            document.querySelectorAll('.api-content').forEach(c => c.style.display = 'none');
         });
     </script>
 </body>

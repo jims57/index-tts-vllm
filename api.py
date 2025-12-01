@@ -3,7 +3,7 @@
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
 # Version: 1.4.2
-# Changes number: 3
+# Changes number: 4
 """
 
 import argparse

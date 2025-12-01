@@ -2,8 +2,8 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.4.4
-# Changes number: 1
+# Version: 1.4.5
+# Changes number: 2
 """
 
 import argparse
@@ -516,6 +516,30 @@ async def clone_voice(request: Request, body: CloneVoiceRequest, x_api_key: Opti
             
             print(f"[CloneVoice] Successfully created WAV file: {target_wav_path}")
             
+            # 将WAV转换为MP3（用于移动端下载，体积更小）
+            target_mp3_path = os.path.join(assets_dir, f"{speaker_id}.mp3")
+            mp3_cmd = [
+                'ffmpeg',
+                '-i', target_wav_path,
+                '-b:a', '128k',  # 128kbps比特率
+                '-y',
+                target_mp3_path
+            ]
+            
+            result = subprocess.run(mp3_cmd, capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                print(f"[CloneVoice] MP3 conversion error: {result.stderr}")
+                raise HTTPException(
+                    status_code=200,
+                    detail={
+                        "errorCode": 4521,
+                        "message": f"Failed to convert WAV to MP3: {result.stderr}"
+                    }
+                )
+            
+            print(f"[CloneVoice] Successfully created MP3 file: {target_mp3_path}")
+            
             # 保存文本到txt文件
             txt_path = os.path.join(assets_dir, f"{speaker_id}.txt")
             with open(txt_path, 'w', encoding='utf-8') as txt_file:
@@ -539,20 +563,20 @@ async def clone_voice(request: Request, body: CloneVoiceRequest, x_api_key: Opti
         except Exception as e:
             print(f"[CloneVoice] Warning: Failed to clean up session directory: {e}")
         
-        # 构建WAV URL
+        # 构建MP3 URL（移动端使用，体积更小）
         host = request.url.hostname
         port = request.url.port
         scheme = request.url.scheme
         if port is None or port == 80:
-            wav_url = f"{scheme}://{host}/resource/{speaker_id}.wav"
+            mp3_url = f"{scheme}://{host}/resource/{speaker_id}.mp3"
         else:
-            wav_url = f"{scheme}://{host}:{port}/resource/{speaker_id}.wav"
+            mp3_url = f"{scheme}://{host}:{port}/resource/{speaker_id}.mp3"
         
         return {
             "errorCode": 0,
             "message": "Voice cloned successfully",
             "speakerId": speaker_id,
-            "wavUrl": wav_url,
+            "mp3Url": mp3_url,
             "text": body.text
         }
         
@@ -572,9 +596,37 @@ async def clone_voice(request: Request, body: CloneVoiceRequest, x_api_key: Opti
 
 @app.get("/resource/{resource_id}")
 async def get_resource(resource_id: str, request: Request):
-    """资源API - 获取WAV文件"""
+    """资源API - 获取音频文件（支持WAV和MP3）"""
+    # 如果resource_id以.mp3结尾，直接提供MP3文件
+    if resource_id.endswith(".mp3"):
+        md5_part = resource_id[:-4]
+        # 验证是有效的MD5（32字符十六进制）
+        if len(md5_part) == 32 and all(c in "0123456789abcdef" for c in md5_part.lower()):
+            # 在assets目录中查找MP3文件
+            assets_dir = os.path.join(os.path.dirname(__file__), "assets")
+            mp3_path = os.path.join(assets_dir, f"{md5_part}.mp3")
+            
+            if os.path.exists(mp3_path):
+                # 提供MP3文件
+                return FileResponse(mp3_path, media_type="audio/mpeg", filename=f"{md5_part}.mp3")
+            else:
+                raise HTTPException(
+                    status_code=200,
+                    detail={
+                        "errorCode": 4533,
+                        "message": "MP3 file not found"
+                    }
+                )
+        else:
+            raise HTTPException(
+                status_code=200,
+                detail={
+                    "errorCode": 4534,
+                    "message": "Invalid MD5 format for mp3 file"
+                }
+            )
     # 如果resource_id以.wav结尾，直接提供WAV文件
-    if resource_id.endswith(".wav"):
+    elif resource_id.endswith(".wav"):
         md5_part = resource_id[:-4]
         # 验证是有效的MD5（32字符十六进制）
         if len(md5_part) == 32 and all(c in "0123456789abcdef" for c in md5_part.lower()):
@@ -602,21 +654,21 @@ async def get_resource(resource_id: str, request: Request):
                 }
             )
     else:
-        # 如果resource_id是MD5，返回WAV资源URL
+        # 如果resource_id是MD5，返回MP3资源URL（移动端使用）
         if len(resource_id) == 32 and all(c in "0123456789abcdef" for c in resource_id.lower()):
-            # 构建WAV URL
+            # 构建MP3 URL
             host = request.url.hostname
             port = request.url.port
             scheme = request.url.scheme
             if port is None or port == 80:
-                wav_url = f"{scheme}://{host}/resource/{resource_id}.wav"
+                mp3_url = f"{scheme}://{host}/resource/{resource_id}.mp3"
             else:
-                wav_url = f"{scheme}://{host}:{port}/resource/{resource_id}.wav"
+                mp3_url = f"{scheme}://{host}:{port}/resource/{resource_id}.mp3"
             
             return {
                 "errorCode": 0,
                 "message": "success",
-                "wavUrl": wav_url
+                "mp3Url": mp3_url
             }
         else:
             raise HTTPException(

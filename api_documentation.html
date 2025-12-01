@@ -34,7 +34,7 @@
     <div class="container">
         <div class="contact-notice">如需获取API密钥，请联系Jimmy开发者</div>
         <h1>Index-TTS-vLLM API 文档</h1>
-        <p class="subtitle">作者：Jimmy Gan | 版本：1.4.2 | 更新时间：2025-12-01</p>
+        <p class="subtitle">作者：Jimmy Gan | 版本：1.4.5 | 更新时间：2025-12-01</p>
 
         <!-- 健康检查 -->
         <div class="api-section">
@@ -124,14 +124,14 @@
             </div>
             <div class="api-content">
                 <h3>接口描述</h3>
-                <p>使用会话中的降噪音频文件生成语音克隆，返回speaker ID和WAV文件URL。</p>
+                <p>使用会话中的降噪音频文件生成语音克隆，返回speaker ID和MP3文件URL（体积更小，适合移动端下载）。服务器同时保存WAV文件用于TTS生成。</p>
                 <h3>请求参数</h3>
                 <div class="parameter"><span class="param-name">Content-Type</span> <span class="param-type">(Header)</span> - application/json</div>
                 <div class="parameter"><span class="param-name">x-api-key</span> <span class="param-type">(Header, 必需)</span> - API密钥</div>
                 <div class="parameter"><span class="param-name">text</span> <span class="param-type">(String, 必需)</span> - 要合成的文本内容</div>
                 <div class="parameter"><span class="param-name">sessionId</span> <span class="param-type">(String, 必需)</span> - UUID会话标识符（需先调用denoiseAudio）</div>
                 <h3>成功响应示例</h3>
-                <div class="code-block success">{"errorCode": 0, "message": "Voice cloned successfully", "speakerId": "47e38dc7e8e8223b4f2c8e91a3b1d6f9", "wavUrl": "http://your-server:9001/resource/47e38dc7e8e8223b4f2c8e91a3b1d6f9.wav", "text": "你好"}</div>
+                <div class="code-block success">{"errorCode": 0, "message": "Voice cloned successfully", "speakerId": "47e38dc7e8e8223b4f2c8e91a3b1d6f9", "mp3Url": "http://your-server:9001/resource/47e38dc7e8e8223b4f2c8e91a3b1d6f9.mp3", "text": "你好"}</div>
                 <h3>错误响应</h3>
                 <div class="error-code"><strong>4401:</strong> API密钥无效</div>
                 <div class="error-code"><strong>4608:</strong> sessionId格式无效</div>
@@ -140,6 +140,7 @@
                 <div class="error-code"><strong>4518:</strong> 音频生成失败</div>
                 <div class="error-code"><strong>4519:</strong> PCM合并失败</div>
                 <div class="error-code"><strong>4520:</strong> WAV转换失败</div>
+                <div class="error-code"><strong>4521:</strong> MP3转换失败</div>
             </div>
         </div>
 
@@ -151,16 +152,19 @@
             </div>
             <div class="api-content">
                 <h3>接口描述</h3>
-                <p>获取WAV音频文件或WAV文件URL。</p>
+                <p>获取音频文件（支持MP3和WAV格式）。</p>
                 <h3>请求格式</h3>
+                <div class="parameter"><span class="param-name">/resource/{md5}.mp3</span> - 直接下载MP3文件（无需API密钥，推荐移动端使用）</div>
                 <div class="parameter"><span class="param-name">/resource/{md5}.wav</span> - 直接下载WAV文件（无需API密钥）</div>
-                <div class="parameter"><span class="param-name">/resource/{md5}</span> - 获取WAV文件URL（返回JSON）</div>
+                <div class="parameter"><span class="param-name">/resource/{md5}</span> - 获取MP3文件URL（返回JSON）</div>
                 <h3>成功响应示例</h3>
-                <div class="code-block success">{"errorCode": 0, "message": "success", "wavUrl": "http://your-server:9001/resource/47e38dc7e8e8223b4f2c8e91a3b1d6f9.wav"}</div>
+                <div class="code-block success">{"errorCode": 0, "message": "success", "mp3Url": "http://your-server:9001/resource/47e38dc7e8e8223b4f2c8e91a3b1d6f9.mp3"}</div>
                 <h3>错误响应</h3>
                 <div class="error-code"><strong>4530:</strong> WAV文件未找到</div>
-                <div class="error-code"><strong>4531:</strong> MD5格式无效</div>
+                <div class="error-code"><strong>4531:</strong> WAV文件MD5格式无效</div>
                 <div class="error-code"><strong>4532:</strong> 资源ID格式无效</div>
+                <div class="error-code"><strong>4533:</strong> MP3文件未找到</div>
+                <div class="error-code"><strong>4534:</strong> MP3文件MD5格式无效</div>
             </div>
         </div>
 
@@ -191,7 +195,7 @@
                 <p>请在HTTP请求头中包含有效的API密钥：</p>
                 <div class="code-block">x-api-key: your-api-key</div>
                 <h3>认证说明</h3>
-                <p>- 所有API都需要有效的API密钥（除了直接下载.wav文件）<br>- WebSocket连接需要在Header中提供x-api-key<br>- 直接访问 /resource/{md5}.wav 无需API密钥<br>- 如需获取API密钥，请联系Jimmy开发者</p>
+                <p>- 所有API都需要有效的API密钥（除了直接下载.mp3/.wav文件）<br>- WebSocket连接需要在Header中提供x-api-key<br>- 直接访问 /resource/{md5}.mp3 或 /resource/{md5}.wav 无需API密钥<br>- 如需获取API密钥，请联系Jimmy开发者</p>
             </div>
         </div>
     </div>

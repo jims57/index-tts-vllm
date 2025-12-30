@@ -1,0 +1,23 @@
+{
+  "text": "在这样一个阳光明媚、微风拂面的下午，我独自坐在公园的长椅上，看着孩子们欢快地追逐嬉戏。",
+  "speakerId": "1",
+  "language": "zh",
+  "audioFormat": "mp3",
+  "saveAudioFiles":true,
+  "outputSampleRate": 8000
+}
+
+[Index-TTS-WS] 收到请求: {'text': '我世界是一幅由无数不同色彩的丝线编织而成的挂毯，每一根丝线都为存在的整体复杂性和美丽贡献着力量。', 'language': 'zh', 'speakerId': 1, 'audioFormat': 'mp3', 'outputSampleRate': 16000, 'speed': 1, 'chunkDuration': 0.5, 'saveAudioFiles': False, 'startTimeId': 1767087722935, 'messageId': 4}
+[Index-TTS-WS] 处理请求 - 文本: 我世界是一幅由无数不同色彩的丝线编织而成的挂毯，每一根丝线都为存在的整体复杂性和美丽贡献着力量。
+[Index-TTS-WS] 说话人: 1, 采样率: 16000Hz, 格式: mp3
+[Index-TTS-WS] 消息头 - startTimeId: 1767087722935, messageId: 4
+[TextSplit] 最终段落数: 2, 段落: ['我世界是一幅由无数不同色彩的丝线编织而成的挂毯，', '每一根丝线都为存在的整体复杂性和美丽贡献着力
+  。']
+[Index-TTS-WS] 将文本分割为 2 个段落
+[Index-TTS-WS] 段落 1: 我世界是一幅由无数不同色彩的丝线编织而成的挂毯，
+[Index-TTS-WS] 段落 2: 每一根丝线都为存在的整体复杂性和美丽贡献着力量。
+[Index-TTS-WS] 创建GaplessMP3Encoder用于无缝流式传输
+[Index-TTS-WS] 处理段落 1/2: 我世界是一幅由无数不同色彩的丝线编织而成的挂毯，
+[Index-TTS-WS] 段落 1 生成失败: 'int' object has no attribute 'endswith'
+[GaplessMP3] Encoder closed, total writes: 0
+[Index-TTS-WS] 完成流式响应 - 发送了 0 个音频块

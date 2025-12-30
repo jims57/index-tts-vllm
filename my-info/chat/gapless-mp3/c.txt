@@ -1,0 +1,8 @@
+{
+  "text": "在这样一个阳光明媚、微风拂面的下午，我独自坐在公园的长椅上，看着孩子们欢快地追逐嬉戏。",
+  "speakerId": "4582b310374bcb6633f2d459bd29811c",
+  "language": "zh",
+  "audioFormat": "mp3",
+  "saveAudioFiles":false,
+  "outputSampleRate": 8000
+}

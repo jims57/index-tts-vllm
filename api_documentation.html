@@ -34,7 +34,7 @@
     <div class="container">
         <div class="contact-notice">如需获取API密钥，请联系Jimmy开发者</div>
         <h1>Index-TTS-vLLM API 文档</h1>
-        <p class="subtitle">作者：Jimmy Gan | 版本：1.4.5 | 更新时间：2025-12-01</p>
+        <p class="subtitle">作者：Jimmy Gan | 版本：1.4.6 | 更新时间：2025-12-30</p>
 
         <!-- 健康检查 -->
         <div class="api-section">
@@ -79,6 +79,14 @@
                 <div class="code-block warning">{"task": "stopTTS", "messageId": 1}</div>
                 <h3>响应格式</h3>
                 <p>成功时返回二进制音频数据流。当提供startTimeId和messageId时，每个音频块前有12字节头部：8字节startTimeId + 4字节messageId，后续为音频数据。TTS完成时发送空音频块作为完成信号。</p>
+                <h3>无缝MP3流 (Gapless MP3 Streaming)</h3>
+                <p>当audioFormat为"mp3"时，使用GaplessMP3Encoder实现真正的无缝MP3流式传输：</p>
+                <ul style="margin-left: 20px;">
+                    <li>保持单一FFmpeg编码器实例，维护内部状态一致性</li>
+                    <li>PCM缓冲区处理帧边界对齐（1152样本/帧）</li>
+                    <li>只输出纯净的MP3音频帧，无ID3/Xing/LAME元数据</li>
+                    <li>多段文本合成时音频无缝衔接，无间隙</li>
+                </ul>
                 <h3>错误响应</h3>
                 <div class="error-code"><strong>4401:</strong> API密钥无效</div>
                 <div class="error-code"><strong>4400:</strong> 参数无效 (text is required)</div>

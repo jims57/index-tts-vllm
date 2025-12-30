@@ -2,8 +2,8 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.4.5
-# Changes number: 2
+# Version: 1.4.6
+# Changes number: 7
 #
 # Common cmd:
 # head -n 10 /mnt/index-tts-vllm/api.py
@@ -33,6 +33,7 @@ import uvicorn
 import aiohttp
 import uuid
 import numpy as np
+import select
 
 # 有效的API密钥
 VALID_API_KEYS = {
@@ -811,6 +812,9 @@ async def call_index_tts_api(text: str, speaker_id: str, seed: int = 42) -> byte
     url = f"{INDEX_TTS_SERVER_URL}/tts_url"
     
     # 构建请求数据
+    # 确保speaker_id是字符串类型（兼容melo api发送int类型的情况）
+    speaker_id = str(speaker_id)
+    
     # 如果speaker_id看起来像文件路径，使用它；否则使用默认路径
     if speaker_id.endswith('.wav') or '/' in speaker_id:
         audio_paths = [speaker_id]
@@ -954,6 +958,283 @@ async def pcm_to_mp3(pcm_data: bytes, sample_rate: int, bitrate: int = 128) -> b
             os.unlink(mp3_temp_path)
         except:
             pass
+
+
+def calculate_mp3_frame_length(version, layer, bitrate_index, sample_rate_index, padding):
+    """
+    计算MP3帧长度
+    
+    Args:
+        version: MPEG版本 (0=2.5, 2=2, 3=1)
+        layer: Layer (1=III, 2=II, 3=I)
+        bitrate_index: 比特率索引
+        sample_rate_index: 采样率索引
+        padding: 填充位
+    
+    Returns:
+        帧长度（字节）
+    """
+    # 比特率表（kbps）
+    # MPEG-1 Layer III
+    bitrate_table_v1_l3 = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0]
+    # MPEG-2/2.5 Layer III
+    bitrate_table_v2_l3 = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0]
+    
+    # 采样率表（Hz）
+    sample_rate_table = {
+        3: [44100, 48000, 32000],  # MPEG-1
+        2: [22050, 24000, 16000],  # MPEG-2
+        0: [11025, 12000, 8000]    # MPEG-2.5
+    }
+    
+    # 获取比特率
+    if version == 3:  # MPEG-1
+        bitrate = bitrate_table_v1_l3[bitrate_index] * 1000
+    else:  # MPEG-2 or MPEG-2.5
+        bitrate = bitrate_table_v2_l3[bitrate_index] * 1000
+    
+    # 获取采样率
+    if version not in sample_rate_table:
+        return 0
+    if sample_rate_index >= len(sample_rate_table[version]):
+        return 0
+    sample_rate = sample_rate_table[version][sample_rate_index]
+    
+    if bitrate == 0 or sample_rate == 0:
+        return 0
+    
+    # Layer III帧长度计算公式
+    if version == 3:  # MPEG-1
+        frame_length = (144 * bitrate) // sample_rate + padding
+    else:  # MPEG-2 or MPEG-2.5
+        frame_length = (72 * bitrate) // sample_rate + padding
+    
+    return frame_length
+
+
+class GaplessMP3Encoder:
+    """
+    无缝MP3编码器 - 保持单一FFmpeg进程，实现真正的无缝MP3流
+    
+    关键特性:
+    1. 保持单一编码器实例，维护内部状态一致性
+    2. PCM缓冲区处理帧边界对齐（1152样本）
+    3. 只输出纯净的MP3音频帧，无元数据
+    """
+    
+    MP3_FRAME_SAMPLES = 1152  # MPEG-1 Layer III每帧样本数
+    
+    def __init__(self, sample_rate=24000, bitrate='128k'):
+        self.sample_rate = sample_rate
+        self.bitrate = bitrate
+        self.process = None
+        self.pcm_buffer = np.array([], dtype=np.float32)  # PCM缓冲区
+        self.mp3_buffer = b''  # MP3输出缓冲区
+        self.is_first_chunk = True
+        self.frames_written = 0
+        
+    def start(self):
+        """启动FFmpeg编码器进程"""
+        if shutil.which('ffmpeg') is None:
+            raise FileNotFoundError("FFmpeg not found")
+        
+        # 启动持久的FFmpeg进程
+        self.process = subprocess.Popen(
+            [
+                'ffmpeg',
+                '-f', 's16le',
+                '-ar', str(self.sample_rate),
+                '-ac', '1',
+                '-i', 'pipe:0',
+                '-c:a', 'libmp3lame',
+                '-b:a', self.bitrate,
+                '-q:a', '2',
+                '-write_id3v1', '0',
+                '-write_id3v2', '0',
+                '-id3v2_version', '0',
+                '-write_xing', '0',
+                '-fflags', '+bitexact',
+                '-f', 'mp3',
+                'pipe:1'
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=0  # 无缓冲，实时输出
+        )
+        print(f"[GaplessMP3] Encoder started: {self.sample_rate}Hz, {self.bitrate}")
+        
+    def feed_pcm(self, pcm_float, volume_multiplier=1.0):
+        """
+        输入PCM数据，返回可用的MP3帧
+        
+        Args:
+            pcm_float: float32 PCM数据 [-1.0, 1.0]
+            volume_multiplier: 音量倍数
+        
+        Returns:
+            bytes: 纯净的MP3音频帧数据
+        """
+        if self.process is None:
+            self.start()
+        
+        # 应用音量并裁剪
+        audio = pcm_float * volume_multiplier
+        audio = np.clip(audio, -1.0, 1.0)
+        
+        # 添加到PCM缓冲区
+        self.pcm_buffer = np.concatenate([self.pcm_buffer, audio])
+        
+        # 计算可以编码的完整帧数
+        complete_frames = len(self.pcm_buffer) // self.MP3_FRAME_SAMPLES
+        
+        if complete_frames == 0:
+            return b''  # 缓冲区不足一帧
+        
+        # 取出完整帧的样本
+        samples_to_encode = complete_frames * self.MP3_FRAME_SAMPLES
+        pcm_to_encode = self.pcm_buffer[:samples_to_encode]
+        self.pcm_buffer = self.pcm_buffer[samples_to_encode:]  # 保留剩余样本
+        
+        # 转换为16位PCM并写入编码器
+        pcm_int16 = (pcm_to_encode * 32767).astype(np.int16)
+        self.process.stdin.write(pcm_int16.tobytes())
+        self.process.stdin.flush()
+        
+        # 非阻塞读取MP3输出
+        mp3_output = b''
+        
+        while True:
+            # 检查是否有数据可读（非阻塞）
+            readable, _, _ = select.select([self.process.stdout], [], [], 0.01)
+            if not readable:
+                break
+            
+            chunk = self.process.stdout.read(4096)
+            if not chunk:
+                break
+            mp3_output += chunk
+        
+        if mp3_output:
+            # 提取纯净的MP3帧
+            clean_frames = self._extract_audio_frames(mp3_output)
+            self.frames_written += 1
+            return clean_frames
+        
+        return b''
+    
+    def flush(self):
+        """
+        刷新编码器，获取剩余的MP3数据
+        
+        Returns:
+            bytes: 剩余的MP3帧数据
+        """
+        if self.process is None:
+            return b''
+        
+        # 如果缓冲区还有数据，用静音填充到完整帧
+        if len(self.pcm_buffer) > 0:
+            padding_needed = self.MP3_FRAME_SAMPLES - (len(self.pcm_buffer) % self.MP3_FRAME_SAMPLES)
+            if padding_needed < self.MP3_FRAME_SAMPLES:
+                self.pcm_buffer = np.concatenate([self.pcm_buffer, np.zeros(padding_needed, dtype=np.float32)])
+            
+            pcm_int16 = (self.pcm_buffer * 32767).astype(np.int16)
+            self.process.stdin.write(pcm_int16.tobytes())
+            self.pcm_buffer = np.array([], dtype=np.float32)
+        
+        # 关闭stdin触发编码器刷新
+        self.process.stdin.close()
+        
+        # 读取所有剩余输出
+        mp3_output = self.process.stdout.read()
+        self.process.wait()
+        
+        if mp3_output:
+            # 提取纯净帧，但跳过最后可能包含LAME标签的帧
+            clean_frames = self._extract_audio_frames(mp3_output, skip_last=True)
+            return clean_frames
+        
+        return b''
+    
+    def _extract_audio_frames(self, mp3_data, skip_last=False):
+        """
+        从MP3数据中提取纯净的音频帧
+        
+        Args:
+            mp3_data: 原始MP3数据
+            skip_last: 是否跳过最后一帧（可能包含LAME标签）
+        
+        Returns:
+            bytes: 纯净的MP3音频帧
+        """
+        if len(mp3_data) < 4:
+            return mp3_data
+        
+        data = bytes(mp3_data)
+        pos = 0
+        frames = []
+        
+        # 跳过ID3头部
+        if data[:3] == b'ID3' and len(data) >= 10:
+            id3_size = ((data[6] & 0x7F) << 21) | ((data[7] & 0x7F) << 14) | \
+                       ((data[8] & 0x7F) << 7) | (data[9] & 0x7F)
+            pos = 10 + id3_size
+        
+        while pos < len(data) - 4:
+            if data[pos] == 0xFF and (data[pos + 1] & 0xE0) == 0xE0:
+                header = (data[pos] << 24) | (data[pos + 1] << 16) | (data[pos + 2] << 8) | data[pos + 3]
+                
+                version = (header >> 19) & 0x03
+                layer = (header >> 17) & 0x03
+                bitrate_index = (header >> 12) & 0x0F
+                sample_rate_index = (header >> 10) & 0x03
+                padding = (header >> 9) & 0x01
+                
+                if layer == 0 or bitrate_index == 0 or bitrate_index == 15 or sample_rate_index == 3:
+                    pos += 1
+                    continue
+                
+                frame_length = calculate_mp3_frame_length(version, layer, bitrate_index, sample_rate_index, padding)
+                
+                if frame_length > 0 and pos + frame_length <= len(data):
+                    # 检查是否为Xing/Info/LAME元数据帧
+                    frame_content = data[pos:pos+200]
+                    if b'Xing' in frame_content or b'Info' in frame_content or b'LAME' in frame_content:
+                        pos += frame_length
+                        continue
+                    
+                    frames.append((pos, frame_length))
+                    pos += frame_length
+                else:
+                    pos += 1
+            else:
+                pos += 1
+        
+        # 如果需要跳过最后一帧
+        if skip_last and len(frames) > 0:
+            frames = frames[:-1]
+        
+        # 组装纯净帧
+        result = b''
+        for frame_pos, frame_len in frames:
+            result += data[frame_pos:frame_pos + frame_len]
+        
+        return result
+    
+    def close(self):
+        """关闭编码器"""
+        if self.process:
+            try:
+                self.process.stdin.close()
+                self.process.stdout.close()
+                self.process.stderr.close()
+                self.process.terminate()
+                self.process.wait(timeout=1)
+            except:
+                pass
+            self.process = None
+        print(f"[GaplessMP3] Encoder closed, total writes: {self.frames_written}")
 
 @app.websocket("/tts")
 async def websocket_tts(websocket: WebSocket):
@@ -1149,6 +1430,12 @@ async def websocket_tts(websocket: WebSocket):
                 # 跟踪是否有音频成功发送（用于判断是否发送完成信号）
                 has_audio_sent = False
                 
+                # 创建持久的MP3编码器（用于无缝MP3流）
+                mp3_encoder = None
+                if audio_format == "mp3":
+                    mp3_encoder = GaplessMP3Encoder(sample_rate=output_sample_rate, bitrate='128k')
+                    print(f"[Index-TTS-WS] 创建GaplessMP3Encoder用于无缝流式传输", flush=True)
+                
                 # 处理每个文本段落
                 for segment_idx, segment_text in enumerate(text_segments):
                     # 检查是否收到停止请求
@@ -1216,53 +1503,62 @@ async def websocket_tts(websocket: WebSocket):
                                 print(f"[Index-TTS-WS] 连接不再活动，停止音频传输", flush=True)
                                 break
                         else:
-                            # MP3格式 - 使用ffmpeg转换PCM为MP3
+                            # MP3格式 - 使用GaplessMP3Encoder进行无缝编码
                             try:
-                                # 使用ffmpeg将PCM转换为MP3
-                                mp3_data = await pcm_to_mp3(pcm_data, output_sample_rate)
+                                # 将PCM数据转换为float32格式用于编码器
+                                pcm_int16 = np.frombuffer(pcm_data, dtype=np.int16)
+                                pcm_float = pcm_int16.astype(np.float32) / 32767.0
                                 
-                                # 如果需要消息头，添加头部
-                                if has_message_headers:
-                                    header_bytes = struct.pack('>QI', start_time_id, message_id)
-                                    audio_bytes_with_headers = header_bytes + mp3_data
-                                else:
-                                    audio_bytes_with_headers = mp3_data
+                                # 使用持久编码器进行无缝编码
+                                mp3_data = mp3_encoder.feed_pcm(pcm_float, volume_multiplier=1.0)
                                 
-                                # 保存音频块（如果需要）
-                                if save_audio_files and chunk_save_folder:
-                                    chunk_file_counter += 1
-                                    file_extension = "mp3"
-                                    chunk_filename = f"chunk_{chunk_file_counter}.{file_extension}"
-                                    chunk_path = os.path.join(chunk_save_folder, chunk_filename)
-                                    with open(chunk_path, "wb") as f:
-                                        f.write(audio_bytes_with_headers)
+                                if mp3_data:
+                                    print(f"[Index-TTS-WS] GaplessMP3: 输入 {len(pcm_float)} 样本, 输出 {len(mp3_data)} 字节", flush=True)
+                                    
+                                    # 如果需要消息头，添加头部
                                     if has_message_headers:
-                                        print(f"[Index-TTS-WS] 已保存 {chunk_filename} ({len(audio_bytes_with_headers)} 字节，包含12字节头部)", flush=True)
+                                        header_bytes = struct.pack('>QI', start_time_id, message_id)
+                                        audio_bytes_with_headers = header_bytes + mp3_data
                                     else:
-                                        print(f"[Index-TTS-WS] 已保存 {chunk_filename} ({len(audio_bytes_with_headers)} 字节，无头部)", flush=True)
-                                
-                                audio_chunk = audio_bytes_with_headers
-                                
-                                # 检查连接是否仍然活动
-                                if connection_active:
-                                    try:
-                                        await websocket.send_bytes(audio_chunk)
-                                        chunk_counter += 1
-                                        has_audio_sent = True
-                                        print(f"[Index-TTS-WS] 已发送MP3音频块 {chunk_counter}, 大小: {len(audio_chunk)} 字节", flush=True)
-                                    except Exception as send_error:
-                                        print(f"[Index-TTS-WS] 发送音频块错误: {send_error}", flush=True)
-                                        connection_active = False
+                                        audio_bytes_with_headers = mp3_data
+                                    
+                                    # 保存音频块（如果需要）
+                                    if save_audio_files and chunk_save_folder:
+                                        chunk_file_counter += 1
+                                        file_extension = "mp3"
+                                        chunk_filename = f"chunk_{chunk_file_counter}.{file_extension}"
+                                        chunk_path = os.path.join(chunk_save_folder, chunk_filename)
+                                        with open(chunk_path, "wb") as f:
+                                            f.write(audio_bytes_with_headers)
+                                        if has_message_headers:
+                                            print(f"[Index-TTS-WS] 已保存 {chunk_filename} ({len(audio_bytes_with_headers)} 字节，包含12字节头部)", flush=True)
+                                        else:
+                                            print(f"[Index-TTS-WS] 已保存 {chunk_filename} ({len(audio_bytes_with_headers)} 字节，无头部)", flush=True)
+                                    
+                                    audio_chunk = audio_bytes_with_headers
+                                    
+                                    # 检查连接是否仍然活动
+                                    if connection_active:
+                                        try:
+                                            await websocket.send_bytes(audio_chunk)
+                                            chunk_counter += 1
+                                            has_audio_sent = True
+                                            print(f"[Index-TTS-WS] 已发送MP3音频块 {chunk_counter}, 大小: {len(audio_chunk)} 字节", flush=True)
+                                        except Exception as send_error:
+                                            print(f"[Index-TTS-WS] 发送音频块错误: {send_error}", flush=True)
+                                            connection_active = False
+                                            break
+                                    else:
+                                        print(f"[Index-TTS-WS] 连接不再活动，停止音频传输", flush=True)
                                         break
                                 else:
-                                    print(f"[Index-TTS-WS] 连接不再活动，停止音频传输", flush=True)
-                                    break
+                                    print(f"[Index-TTS-WS] GaplessMP3: 输入 {len(pcm_float)} 样本, 缓冲中...", flush=True)
                                     
                             except Exception as mp3_error:
-                                print(f"[Index-TTS-WS] MP3转换错误: {mp3_error}", flush=True)
+                                print(f"[Index-TTS-WS] MP3编码错误: {mp3_error}", flush=True)
                                 await websocket.send_text(json.dumps({
                                     "errorCode": 5001,
-                                    "message": f"MP3 conversion failed: {str(mp3_error)}"
+                                    "message": f"MP3 encoding failed: {str(mp3_error)}"
                                 }))
                                 break
                         
@@ -1273,6 +1569,25 @@ async def websocket_tts(websocket: WebSocket):
                             "message": f"Failed to generate audio for segment {segment_idx+1}: {str(e)}"
                         }))
                         break
+                
+                # 刷新MP3编码器，获取剩余数据
+                if mp3_encoder is not None and not stop_requested:
+                    try:
+                        final_mp3_data = mp3_encoder.flush()
+                        if final_mp3_data and connection_active:
+                            if has_message_headers:
+                                header_bytes = struct.pack('>QI', start_time_id, message_id)
+                                data_to_send = header_bytes + final_mp3_data
+                                await websocket.send_bytes(data_to_send)
+                                print(f"[Index-TTS-WS] GaplessMP3: 刷新最终 {len(final_mp3_data)} 字节（带头部）", flush=True)
+                            else:
+                                await websocket.send_bytes(final_mp3_data)
+                                print(f"[Index-TTS-WS] GaplessMP3: 刷新最终 {len(final_mp3_data)} 字节", flush=True)
+                            chunk_counter += 1
+                            has_audio_sent = True
+                        mp3_encoder.close()
+                    except Exception as flush_error:
+                        print(f"[Index-TTS-WS] GaplessMP3 刷新错误: {str(flush_error)}", flush=True)
                 
                 # 发送完成信号（空流）仅在未停止且有音频成功发送时
                 if not stop_requested and connection_active and has_audio_sent:

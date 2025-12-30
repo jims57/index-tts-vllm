@@ -1,0 +1,34 @@
+(base) root@39e8bf7e5235:/mnt/index-tts-vllm# python api.py --port 19001
+/mnt/index-tts-vllm/api.py:106: DeprecationWarning: 
+        on_event is deprecated, use lifespan event handlers instead.
+
+        Read more about it in the
+        [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+        
+  @app.on_event("startup")
+
+--------------------------------------------------
+Index-TTS-vLLM API Server 1.4.5
+# Changes number: 2
+--------------------------------------------------
+
+INFO:     Started server process [741]
+INFO:     Waiting for application startup.
+[Health-Check] 正在检查TTS服务是否就绪...
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:19001 (Press CTRL+C to quit)
+[Health-Check] TTS服务已就绪！收到44490字节的WAV数据
+
+
+http://8.153.108.254:19001
+
+
+ws://8.153.108.254:19001/tts
+{
+  "text": "在这样一个阳光明媚、微风拂面的下午，我独自坐在公园的长椅上，看着孩子们欢快地追逐嬉戏。",
+  "speakerId": "7678676fff6d4086132cf6c6a575f571",
+  "language": "zh",
+  "audioFormat": "mp3",
+  "saveAudioFiles":true,
+  "outputSampleRate": 8000
+}

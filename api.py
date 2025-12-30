@@ -4,6 +4,13 @@
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
 # Version: 1.4.5
 # Changes number: 2
+#
+# Common cmd:
+# head -n 10 /mnt/index-tts-vllm/api.py
+# modelscope download --model kusuriuri/Index-TTS-1.5-vLLM --local_dir ./checkpoints/Index-TTS-1.5-vLLM
+# python api_server.py --port 6006 --model_dir /mnt/index-tts-vllm/checkpoints/Index-TTS-1.5-vLLM --gpu_memory_utilization 0.25
+# docker exec -it index-tts-vllm /bin/bash
+# python api.py --port 9001
 """
 
 import argparse

@@ -1,0 +1,19 @@
+>> bigvgan weights restored from: /mnt/index-tts-vllm/checkpoints/Index-TTS-1.5-vLLM/bigvgan_generator.pth
+2025-12-30 08:55:51,391 WETEXT INFO found existing fst: /mnt/index-tts-vllm/indextts/utils/tagger_cache/zh_tn_tagger.fst
+2025-12-30 08:55:51,392 WETEXT INFO                     /mnt/index-tts-vllm/indextts/utils/tagger_cache/zh_tn_verbalizer.fst
+2025-12-30 08:55:51,392 WETEXT INFO skip building fst for zh_normalizer ...
+2025-12-30 08:55:51,718 WETEXT INFO found existing fst: /root/miniconda3/envs/index-tts-vllm/lib/python3.12/site-packages/tn/en_tn_tagger.fst
+2025-12-30 08:55:51,718 WETEXT INFO                     /root/miniconda3/envs/index-tts-vllm/lib/python3.12/site-packages/tn/en_tn_verbalizer.fst
+2025-12-30 08:55:51,718 WETEXT INFO skip building fst for en_normalizer ...
+>> TextNormalizer loaded
+>> bpe model loaded from: /mnt/index-tts-vllm/checkpoints/Index-TTS-1.5-vLLM/bpe.model
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:6006 (Press CTRL+C to quit)
+
+
+INFO:     Uvicorn running on http://0.0.0.0:19001 (Press CTRL+C to quit)
+[Health-Check] TTS服务返回错误: 500 - {"status":"error","error":"Traceback (most recent call last):\n  File \"/mnt/index-tts-vllm/api_serv
+[Health-Check] 正在检查TTS服务是否就绪...
+[Health-Check] TTS服务返回错误: 500 - {"status":"error","error":"Traceback (most recent call last):\n  File \"/mnt/index-tts-vllm/api_serv
+[Health-Check] 正在检查TTS服务是否就绪...
+[Health-Check] TTS服务返回错误: 500 - {"status":"error","error":"Traceback (most recent call last):\n  File \"/mnt/index-tts-vllm/api_serv

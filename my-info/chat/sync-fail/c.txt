@@ -1,0 +1,57 @@
+(base) mac@Jimmy-Macbook-Pro sync_files_to_server % ./sync_files_to_server.sh
+=== 开始同步文件到远程Docker容器 ===
+服务器: root@8.153.108.254:22
+容器: index-tts-vllm
+目标路径: /mnt/index-tts-vllm
+检查文件变化...
+  [变化] api.py
+  [无变化] api_documentation.html
+共 1 个文件需要同步
+cp: /api.py: No such file or directory
+正在同步到远程服务器...
+Transfer starting: 1 files
+./
+
+sent 69 bytes  received 26 bytes  949 bytes/sec
+total size is 0  speedup is 0.00
+正在复制到Docker容器 index-tts-vllm...
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+Welcome to Ubuntu 22.04.5 LTS (GNU/Linux 5.15.0-124-generic x86_64)
+
+ * Documentation:  https://help.ubuntu.com
+ * Management:     https://landscape.canonical.com
+ * Support:        https://ubuntu.com/pro
+
+ System information as of Wed Dec 31 02:56:41 PM CST 2025
+
+  System load:  0.02                Processes:             292
+  Usage of /:   34.7% of 294.92GB   Users logged in:       1
+  Memory usage: 11%                 IPv4 address for eth0: 10.0.1.140
+  Swap usage:   0%
+
+ * Strictly confined Kubernetes makes edge and IoT secure. Learn how MicroK8s
+   just raised the bar for easy, resilient and secure K8s cluster deployment.
+
+   https://ubuntu.com/engage/secure-kubernetes-at-the-edge
+
+Expanded Security Maintenance for Applications is not enabled.
+
+69 updates can be applied immediately.
+To see these additional updates run: apt list --upgradable
+
+10 additional security updates can be applied with ESM Apps.
+Learn more about enabling ESM Apps service at https://ubuntu.com/esm
+
+New release '24.04.3 LTS' available.
+Run 'do-release-upgrade' to upgrade to it.
+
+
+2 updates could not be installed automatically. For more details,
+see /var/log/unattended-upgrades/unattended-upgrades.log
+
+
+Welcome to Alibaba Cloud Elastic Compute Service !
+
+=== 同步完成! ===
+已同步 1 个文件到 index-tts-vllm:/mnt/index-tts-vllm
+(base) mac@Jimmy-Macbook-Pro sync_files_to_server % 

@@ -144,7 +144,7 @@ mkdir -p "$TEMP_DIR"
 
 # 复制需要同步的文件到临时目录（保持目录结构）
 for REL_PATH in "${SYNC_FILES[@]}"; do
-    SRC_FILE="$LOCAL_BASE_DIR/$REL_PATH"
+    SRC_FILE="$LOCAL_APP_DIR/$REL_PATH"
     DEST_FILE="$TEMP_DIR/$REL_PATH"
     DEST_DIR=$(dirname "$DEST_FILE")
     mkdir -p "$DEST_DIR"

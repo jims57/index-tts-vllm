@@ -1,0 +1,19 @@
+{
+  "text": "在这样一个阳光明媚、微风拂面的下午，我独自坐在公园的长椅上，看着孩子们欢快地追逐嬉戏。",
+  "speakerId": "2",
+  "language": "ZH",
+  "audioFormat": "pcm",
+  "saveAudioFiles":false,
+  "outputSampleRate": 16000
+}
+
+
+{
+  "text": "世界是一幅由无数不同色彩的丝线编织而成的挂毯，每一根丝线都为存在的整体复杂性和美丽贡献着力量。",
+  "speakerId": "1",
+  "language": "ZH",
+  "audioFormat": "mp3",
+  "saveAudioFiles":true,
+  "outputSampleRate": 16000,
+  "priorityTts":"index-tts"
+}

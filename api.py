@@ -2,8 +2,8 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.4.6
-# Changes number: 7
+# Version: 1.4.8
+# Changes number: 48
 #
 # Common cmd:
 # head -n 10 /mnt/index-tts-vllm/api.py
@@ -49,6 +49,14 @@ INDEX_TTS_SERVER_URL = "http://localhost:6006"
 # TTS服务就绪状态标志（用于健康检查）
 tts_server_ready = False
 tts_server_check_task = None
+
+# 全局aiohttp会话（复用连接以提高性能）
+http_session: aiohttp.ClientSession = None
+
+# 说话人缓存（缓存已验证的说话人文件路径）
+speaker_cache = {}
+# 说话人缓存最后更新时间
+speaker_cache_last_update = 0
 
 def verify_api_key(x_api_key: Optional[str] = Header(None)):
     """验证API密钥"""
@@ -114,8 +122,72 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     """应用启动时开始后台检查TTS服务"""
-    global tts_server_check_task
+    global tts_server_check_task, http_session
     tts_server_check_task = asyncio.create_task(check_tts_server_ready())
+    # 创建全局aiohttp会话（复用连接池）
+    http_session = aiohttp.ClientSession(
+        timeout=aiohttp.ClientTimeout(total=120),
+        connector=aiohttp.TCPConnector(limit=100, keepalive_timeout=30)
+    )
+    # 初始化说话人缓存
+    await refresh_speaker_cache()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """应用关闭时清理资源"""
+    global http_session
+    if http_session:
+        await http_session.close()
+
+def get_assets_dir():
+    """获取assets目录路径"""
+    return os.path.join(os.path.dirname(__file__), "assets")
+
+def get_speaker_path(speaker_id: str) -> str:
+    """
+    获取说话人音频文件路径（懒加载模式）
+    - 如果speaker_id已在缓存中，直接返回缓存的路径
+    - 如果不在缓存中，检查assets目录是否存在对应的wav文件
+    - 如果存在，加入缓存并返回路径
+    - 如果不存在，返回None
+    """
+    global speaker_cache
+    
+    # 如果已在缓存中，直接返回
+    if speaker_id in speaker_cache:
+        return speaker_cache[speaker_id]
+    
+    # 检查assets目录是否存在对应的wav文件
+    assets_dir = get_assets_dir()
+    wav_path = os.path.join(assets_dir, f"{speaker_id}.wav")
+    
+    if os.path.exists(wav_path):
+        # 懒加载：首次使用时加入缓存
+        speaker_cache[speaker_id] = wav_path
+        print(f"[SpeakerCache] 懒加载说话人: {speaker_id} -> {wav_path}")
+        return wav_path
+    
+    return None
+
+async def refresh_speaker_cache():
+    """刷新说话人缓存 - 只预加载默认说话人(speakerId=1)，其他说话人懒加载以避免OOM"""
+    global speaker_cache, speaker_cache_last_update
+    assets_dir = get_assets_dir()
+    
+    # 清空缓存
+    speaker_cache = {}
+    
+    # 只预加载默认说话人(speakerId=1)
+    default_speaker_id = "1"
+    default_wav_path = os.path.join(assets_dir, f"{default_speaker_id}.wav")
+    if os.path.exists(default_wav_path):
+        speaker_cache[default_speaker_id] = default_wav_path
+        print(f"[SpeakerCache] 预加载默认说话人: {default_speaker_id} -> {default_wav_path}")
+    else:
+        print(f"[SpeakerCache] 警告: 默认说话人文件不存在: {default_wav_path}")
+    
+    speaker_cache_last_update = time.time()
+    print(f"[SpeakerCache] 说话人缓存已初始化（懒加载模式），预加载 {len(speaker_cache)} 个说话人")
 
 # 从文件头获取版本信息
 with open(__file__, 'r', encoding='utf-8') as f:
@@ -721,6 +793,31 @@ async def api_doc():
             }
         )
 
+@app.get("/refreshConfigs")
+async def refresh_configs():
+    """刷新配置API - 刷新说话人缓存等配置"""
+    global speaker_cache, speaker_cache_last_update
+    
+    try:
+        # 刷新说话人缓存
+        await refresh_speaker_cache()
+        
+        return {
+            "errorCode": 0,
+            "message": "配置已刷新",
+            "speakerCount": len(speaker_cache),
+            "speakers": list(speaker_cache.keys()),
+            "lastUpdate": speaker_cache_last_update
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=200,
+            detail={
+                "errorCode": 4550,
+                "message": f"刷新配置失败: {str(e)}"
+            }
+        )
+
 def split_text_by_punctuation(text: str, language: str = None) -> list:
     """
     根据标点符号分割文本
@@ -809,18 +906,26 @@ async def call_index_tts_api(text: str, speaker_id: str, seed: int = 42) -> byte
     Returns:
         音频数据（WAV格式）
     """
+    global http_session, speaker_cache
     url = f"{INDEX_TTS_SERVER_URL}/tts_url"
     
     # 构建请求数据
     # 确保speaker_id是字符串类型（兼容melo api发送int类型的情况）
     speaker_id = str(speaker_id)
     
-    # 如果speaker_id看起来像文件路径，使用它；否则使用默认路径
+    # 如果speaker_id看起来像文件路径，使用它；否则使用懒加载获取路径
     if speaker_id.endswith('.wav') or '/' in speaker_id:
         audio_paths = [speaker_id]
     else:
-        # 使用speaker_id作为文件名
-        audio_paths = [f"assets/{speaker_id}.wav"]
+        # 使用懒加载获取说话人路径
+        speaker_path = get_speaker_path(speaker_id)
+        if speaker_path:
+            audio_paths = [speaker_path]
+        else:
+            # 说话人不存在，使用默认说话人"1"
+            print(f"[Index-TTS-API] speakerId '{speaker_id}' 不存在，使用默认说话人 '1'")
+            default_path = get_speaker_path("1")
+            audio_paths = [default_path if default_path else "assets/1.wav"]
     
     payload = {
         "text": text,
@@ -828,13 +933,19 @@ async def call_index_tts_api(text: str, speaker_id: str, seed: int = 42) -> byte
         "seed": seed
     }
     
-    async with aiohttp.ClientSession() as session:
-        async with session.post(url, json=payload) as response:
-            if response.status == 200:
-                return await response.read()
-            else:
-                error_text = await response.text()
-                raise Exception(f"Index-TTS API error: {response.status} - {error_text}")
+    # 使用全局会话（复用连接池）
+    if http_session is None:
+        http_session = aiohttp.ClientSession(
+            timeout=aiohttp.ClientTimeout(total=120),
+            connector=aiohttp.TCPConnector(limit=100, keepalive_timeout=30)
+        )
+    
+    async with http_session.post(url, json=payload) as response:
+        if response.status == 200:
+            return await response.read()
+        else:
+            error_text = await response.text()
+            raise Exception(f"Index-TTS API error: {response.status} - {error_text}")
 
 def pcm_to_wav_header(sample_rate: int, num_channels: int, bits_per_sample: int, data_size: int) -> bytes:
     """
@@ -1353,7 +1464,7 @@ async def websocket_tts(websocket: WebSocket):
             
             # 提取参数
             text = request_data.get("text", "")
-            speaker_id = request_data.get("speakerId", "wm-sample-for-cosy")
+            speaker_id = request_data.get("speakerId", "1")
             output_sample_rate = request_data.get("outputSampleRate", 16000)
             audio_format = request_data.get("audioFormat", "pcm").lower()
             start_time_id = request_data.get("startTimeId")
@@ -1361,6 +1472,16 @@ async def websocket_tts(websocket: WebSocket):
             save_audio_files = request_data.get("saveAudioFiles", False)
             language = request_data.get("language")
             seed = request_data.get("seed", 42)
+            
+            # 验证speakerId是否存在（懒加载模式：检查缓存或assets目录）
+            speaker_id = str(speaker_id)
+            if not speaker_id.endswith('.wav') and '/' not in speaker_id:
+                # 使用get_speaker_path进行懒加载检查
+                speaker_path = get_speaker_path(speaker_id)
+                if speaker_path is None:
+                    # 说话人不存在，使用默认值"1"
+                    print(f"[Index-TTS-WS] speakerId '{speaker_id}' 在assets目录中不存在，使用默认值 '1'", flush=True)
+                    speaker_id = "1"
             
             # 检查messageId是否在忽略列表中
             if message_id is not None and message_id in ignored_message_ids:

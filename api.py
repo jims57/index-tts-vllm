@@ -2,8 +2,8 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.4.8
-# Changes number: 51
+# Version: 1.4.9
+# Changes number: 49
 #
 # Common cmd:
 # head -n 10 /mnt/index-tts-vllm/api.py
@@ -1216,8 +1216,8 @@ class GaplessMP3Encoder:
         mp3_output = b''
         
         while True:
-            # 检查是否有数据可读（非阻塞）
-            readable, _, _ = select.select([self.process.stdout], [], [], 0.01)
+            # 检查是否有数据可读（非阻塞，1ms超时以实现更快响应）
+            readable, _, _ = select.select([self.process.stdout], [], [], 0.001)
             if not readable:
                 break
             

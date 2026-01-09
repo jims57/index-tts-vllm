@@ -8,6 +8,8 @@
 # Common cmd:
 # head -n 10 /mnt/index-tts-vllm/api.py
 # modelscope download --model kusuriuri/Index-TTS-1.5-vLLM --local_dir ./checkpoints/Index-TTS-1.5-vLLM
+# tmux new -s index-tts-server2
+# run container at 19001 or 19002
 # python api_server.py --port 6006 --model_dir /mnt/index-tts-vllm/checkpoints/Index-TTS-1.5-vLLM --gpu_memory_utilization 0.25
 # ==[Note] You should exit tmux session(index-tts) and create new tmux session(index-tts) before running api.py ==
 # tmux new -s index-tts

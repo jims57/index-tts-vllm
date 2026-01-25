@@ -7,12 +7,26 @@
 #
 # Common cmd:
 # head -n 10 /mnt/index-tts-vllm/api.py
+# 
+# ===== how to run index-tts-vllm at server from scratch =====
+# Step 1：(upload local files to server using Termius)
+# upload these files:
+# from local:
+# /Users/mac/Documents/GitHub/index-tts-vllm/assets/
+# to server:
+# /mnt/index-tts-vllm/assets/
+
+sudo apt update && sudo apt install -y python3-pip
+sudo ln -s /usr/bin/python3 /usr/bin/python
+
+# Step 2：(For indextts-server tmux session)
+# tmux new -s indextts-server
+# version="1.4.9" && server_name="index-tts-vllm" && image_prefix="d.watchfun.cn/jims57" && image_name="${image_prefix}/${server_name}" && tag="v${version}" && docker rm "${server_name}" -f && docker run --gpus all -it -p 9001:9001 --shm-size=4g -w /mnt/index-tts-vllm -v /mnt/index-tts-vllm/checkpoints:/mnt/index-tts-vllm/checkpoints -v /mnt/index-tts-vllm/assets:/mnt/index-tts-vllm/assets -v /mnt/index-tts-vllm/logs:/mnt/index-tts-vllm/logs -v /mnt/index-tts-vllm/savedAudioFiles:/mnt/index-tts-vllm/savedAudioFiles -e API_PORT=9001 --name "${server_name}" "${image_name}:${tag}" /bin/bash
 # modelscope download --model kusuriuri/Index-TTS-1.5-vLLM --local_dir ./checkpoints/Index-TTS-1.5-vLLM
-# tmux new -s index-tts-server2
-# run container at 19001 or 19002
 # python api_server.py --port 6006 --model_dir /mnt/index-tts-vllm/checkpoints/Index-TTS-1.5-vLLM --gpu_memory_utilization 0.25
-# ==[Note] You should exit tmux session(index-tts) and create new tmux session(index-tts) before running api.py ==
-# tmux new -s index-tts
+# 
+# Step 3：(For indextts tmux session)
+# tmux new -s indextts
 # docker exec -it index-tts-vllm /bin/bash
 # python api.py --port 9001
 """

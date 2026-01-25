@@ -7,14 +7,15 @@
 # ./deploy-indextts-server.sh <服务器IP> <私钥路径>
 # 
 # 示例:
-# ./deploy-indextts-server.sh 47.85.102.125 /Users/mac/.ssh/aliyun/Jimmy-US-Virginia-Private-Key.pem
+# chmod +x deploy-indextts-server.sh
+# ./deploy-indextts-server.sh 47.85.84.173 /Users/mac/.ssh/aliyun/Jimmy-US-Virginia-Private-Key.pem
 # ============================================================================
 
 # 检查参数
 if [ $# -ne 2 ]; then
     echo "错误: 需要提供两个参数 - 服务器IP和私钥路径"
     echo "用法: $0 <服务器IP> <私钥路径>"
-    echo "示例: $0 47.85.102.125 /Users/mac/.ssh/aliyun/Jimmy-US-Virginia-Private-Key.pem"
+    echo "示例: $0 47.85.84.173 /Users/mac/.ssh/aliyun/Jimmy-US-Virginia-Private-Key.pem"
     exit 1
 fi
 

@@ -1,0 +1,23 @@
+[Index-TTS-WS] 收到请求: {'text': '今天的天气怎么样？你有空吗', 'speakerId': '7678676fff6d4086132cf6c6a575f571', 'language': 'zh', 'audioFormat': 'mp3', 'saveAudioFiles': True, 'outputSampleRate': 8000, 'startTimeId': 1234567890, 'messageId': 4}
+[Index-TTS-WS] speakerId '7678676fff6d4086132cf6c6a575f571' 在assets目录中不存在，使用默认值 '1'
+[Index-TTS-WS] 处理请求 - 文本: 今天的天气怎么样？你有空吗
+[Index-TTS-WS] 说话人: 1, 采样率: 8000Hz, 格式: mp3
+[Index-TTS-WS] 消息头 - startTimeId: 1234567890, messageId: 4
+[Index-TTS-WS] 创建/验证音频块保存文件夹: /mnt/index-tts-vllm/savedAudioFiles
+[TextSplit] 最终段落数: 2, 段落: ['今天的天气怎么样？', '你有空吗']
+[Index-TTS-WS] 将文本分割为 2 个段落
+[Index-TTS-WS] 段落 1: 今天的天气怎么样？
+[Index-TTS-WS] 段落 2: 你有空吗
+[Index-TTS-WS] 创建GaplessMP3Encoder用于无缝流式传输
+[Index-TTS-WS] 处理段落 1/2: 今天的天气怎么样？
+[Index-TTS-WS] 段落 1 生成时间: 255.60ms
+[GaplessMP3] Encoder started: 8000Hz, 128k
+[Index-TTS-WS] GaplessMP3: 输入 14757 样本, 缓冲中...
+[Index-TTS-WS] 处理段落 2/2: 你有空吗
+[Index-TTS-WS] 段落 2 生成时间: 191.91ms
+[Index-TTS-WS] GaplessMP3: 输入 9985 样本, 缓冲中...
+[Index-TTS-WS] GaplessMP3: 刷新最终 9288 字节（带头部）
+[GaplessMP3] Encoder closed, total writes: 0
+[Index-TTS-WS] 已发送完成信号: 12 字节 (12字节头部 + 0音频字节)
+[Index-TTS-WS] 完成流式响应 - 发送了 1 个音频块
+[Index-TTS-WS] 已保存 0 个 MP3 块文件到 /mnt/index-tts-vllm/savedAudioFiles

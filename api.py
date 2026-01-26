@@ -2,8 +2,8 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.5.0
-# Changes number: 50
+# Version: 1.5.1
+# Changes number: 51
 #
 # Common cmd:
 # head -n 10 /mnt/index-tts-vllm/api.py
@@ -1751,9 +1751,25 @@ async def websocket_tts(websocket: WebSocket):
                                 data_to_send = header_bytes + final_mp3_data
                                 await websocket.send_bytes(data_to_send)
                                 print(f"[Index-TTS-WS] GaplessMP3: 刷新最终 {len(final_mp3_data)} 字节（带头部）", flush=True)
+                                # 保存最终MP3数据（如果需要）
+                                if save_audio_files and chunk_save_folder:
+                                    chunk_file_counter += 1
+                                    chunk_filename = f"chunk_{chunk_file_counter}.mp3"
+                                    chunk_path = os.path.join(chunk_save_folder, chunk_filename)
+                                    with open(chunk_path, "wb") as f:
+                                        f.write(data_to_send)
+                                    print(f"[Index-TTS-WS] 已保存 {chunk_filename} ({len(data_to_send)} 字节，包含12字节头部)", flush=True)
                             else:
                                 await websocket.send_bytes(final_mp3_data)
                                 print(f"[Index-TTS-WS] GaplessMP3: 刷新最终 {len(final_mp3_data)} 字节", flush=True)
+                                # 保存最终MP3数据（如果需要）
+                                if save_audio_files and chunk_save_folder:
+                                    chunk_file_counter += 1
+                                    chunk_filename = f"chunk_{chunk_file_counter}.mp3"
+                                    chunk_path = os.path.join(chunk_save_folder, chunk_filename)
+                                    with open(chunk_path, "wb") as f:
+                                        f.write(final_mp3_data)
+                                    print(f"[Index-TTS-WS] 已保存 {chunk_filename} ({len(final_mp3_data)} 字节，无头部)", flush=True)
                             chunk_counter += 1
                             has_audio_sent = True
                         mp3_encoder.close()

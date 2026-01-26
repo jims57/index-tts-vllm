@@ -1,7 +1,8 @@
 #!/bin/bash
  
  # 挂载NAS到ECS (NFS)
- # 用法: bash /root/mount-nas-to-ecs.sh <nasUrl>
+ # 用法: 
+ # bash /root/mount-nas-to-ecs.sh 13b67948707-hme76.us-east-1.nas.aliyuncs.com
  
  if [ $# -ne 1 ]; then
      echo "错误: 需要提供nasUrl参数"

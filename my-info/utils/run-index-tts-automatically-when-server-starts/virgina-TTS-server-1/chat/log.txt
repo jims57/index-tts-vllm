@@ -1,0 +1,11 @@
+==> /mnt/index-tts-vllm/logs/api_server_py_20260125_222513.log <==
+    raise RuntimeError("Ninja is required to load C++ extensions (pip install ninja to get it)")
+RuntimeError: Ninja is required to load C++ extensions (pip install ninja to get it)
+2026-01-25 14:25:47,236 WETEXT INFO found existing fst: /mnt/index-tts-vllm/indextts/utils/tagger_cache/zh_tn_tagger.fst
+2026-01-25 14:25:47,237 WETEXT INFO                     /mnt/index-tts-vllm/indextts/utils/tagger_cache/zh_tn_verbalizer.fst
+2026-01-25 14:25:47,237 WETEXT INFO skip building fst for zh_normalizer ...
+2026-01-25 14:25:47,510 WETEXT INFO found existing fst: /root/miniconda3/envs/index-tts-vllm/lib/python3.12/site-packages/tn/en_tn_tagger.fst
+2026-01-25 14:25:47,510 WETEXT INFO                     /root/miniconda3/envs/index-tts-vllm/lib/python3.12/site-packages/tn/en_tn_verbalizer.fst
+2026-01-25 14:25:47,510 WETEXT INFO skip building fst for en_normalizer ...
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:6006 (Press CTRL+C to quit)

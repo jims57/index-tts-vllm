@@ -8,14 +8,14 @@
 # 
 # 示例:
 # chmod +x deploy-indextts-server.sh
-# ./deploy-indextts-server.sh 47.85.84.173 /Users/mac/.ssh/aliyun/Jimmy-US-Virginia-Private-Key.pem
+# ./deploy-indextts-server.sh 8.221.103.204 /Users/mac/.ssh/aliyun/Jimmy-US-Virginia-Private-Key.pem
 # ============================================================================
 
 # 检查参数
 if [ $# -ne 2 ]; then
     echo "错误: 需要提供两个参数 - 服务器IP和私钥路径"
     echo "用法: $0 <服务器IP> <私钥路径>"
-    echo "示例: $0 47.85.84.173 /Users/mac/.ssh/aliyun/Jimmy-US-Virginia-Private-Key.pem"
+    echo "示例: $0 8.221.103.204 /Users/mac/.ssh/aliyun/Jimmy-US-Virginia-Private-Key.pem"
     exit 1
 fi
 
@@ -91,6 +91,7 @@ echo "日志文件位置: /var/log/index-tts-startup.log"
 echo "服务器重启后将自动启动Index-TTS服务"
 echo ""
 echo "手动运行脚本: ssh -i \"$PRIVATE_KEY\" root@$SERVER_IP \"bash /root/run-index-tts-automatically-when-server-starts.sh\""
-echo "查看日志: ssh -i \"$PRIVATE_KEY\" root@$SERVER_IP \"tail -f /var/log/index-tts-startup.log\""
-echo "查看tmux会话: ssh -i \"$PRIVATE_KEY\" root@$SERVER_IP \"tmux ls\""
+echo "查看启动日志: ssh -i \"$PRIVATE_KEY\" root@$SERVER_IP \"tail -f /var/log/index-tts-startup.log\""
+echo "查看容器状态: ssh -i \"$PRIVATE_KEY\" root@$SERVER_IP \"docker ps\""
+echo "查看Python进程: ssh -i \"$PRIVATE_KEY\" root@$SERVER_IP \"docker exec index-tts-vllm ps aux | grep python\""
 echo "============================================================"

@@ -2,8 +2,8 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.4.9
-# Changes number: 49
+# Version: 1.5.0
+# Changes number: 50
 #
 # Common cmd:
 # head -n 10 /mnt/index-tts-vllm/api.py
@@ -255,10 +255,11 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.api_route("/", methods=["GET", "HEAD"])
 async def root():
-    """根路径健康检查 - 只有当TTS服务就绪时才返回健康"""
-    global tts_server_ready
+    """根路径健康检查 - 只有当api_server.py的TTS服务就绪时才返回健康"""
+    global tts_server_ready, http_session
+    
+    # 首先检查本地缓存的就绪状态
     if not tts_server_ready:
-        # 返回503表示TTS服务未就绪，ALB不会将用户请求转发到此实例
         return JSONResponse(
             status_code=503,
             content={
@@ -266,6 +267,37 @@ async def root():
                 "message": "TTS service is not ready yet, model is still loading"
             }
         )
+    
+    # 实时检查api_server.py的健康状态，确保TTS服务可以正常生成
+    try:
+        health_url = f"{INDEX_TTS_SERVER_URL}/health"
+        async with http_session.get(health_url, timeout=aiohttp.ClientTimeout(total=5)) as response:
+            if response.status != 200:
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "errorCode": 5003,
+                        "message": "TTS backend service is not healthy"
+                    }
+                )
+            health_data = await response.json()
+            if health_data.get("status") != "healthy":
+                return JSONResponse(
+                    status_code=503,
+                    content={
+                        "errorCode": 5003,
+                        "message": "TTS backend service is not healthy"
+                    }
+                )
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "errorCode": 5003,
+                "message": f"Cannot connect to TTS backend service: {str(e)}"
+            }
+        )
+    
     return {
         "errorCode": 0,
         "message": "Index-TTS-vLLM API is running"

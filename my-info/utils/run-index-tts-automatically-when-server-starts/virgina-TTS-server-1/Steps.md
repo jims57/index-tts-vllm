@@ -1,3 +1,7 @@
+# download model from modelscope
+
+# upload files in assets to server
+
 # upload mount-nas-to-ecs.sh to root of server
 
 # chmod +x /root/mount-nas-to-ecs.sh
@@ -14,4 +18,9 @@ docker login --username=jimmy d.watchfun.cn
 
 # chmod +x run-index-tts-automatically-when-server-starts.sh
 # ./run-index-tts-automatically-when-server-starts.sh
+
+
+crontab -e
+# Add this line:
+@reboot /root/run-index-tts-automatically-when-server-starts.sh >> /var/log/index-tts-startup.log 2>&1
 

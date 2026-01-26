@@ -83,7 +83,7 @@ echo "$(date): 等待5秒..."
 sleep 5
 
 # 配置变量
-version="1.4.9"
+version="1.5.0"
 server_name="index-tts-vllm"
 image_prefix="d.watchfun.cn/jims57"
 image_name="${image_prefix}/${server_name}"
@@ -213,100 +213,26 @@ if [ "$api_server_started" = false ]; then
 fi
 
 # ============================================================================
-# 步骤4: 后台线程检测TTS就绪并立即启动api.py
+# 步骤4: 立即启动api.py (无需等待TTS就绪，api.py自带健康检查机制)
 # ============================================================================
-echo "$(date): 启动后台线程检测api_server.py TTS服务就绪状态..."
+# 说明: api.py v1.5.0+ 的根路径健康检查会实时调用api_server.py的/health接口
+# 只有当api_server.py完全就绪时，api.py才会返回200，否则返回503
+# 因此无需在此脚本中进行耗时的TTS测试(119/200 check)
+echo "$(date): 立即启动api.py (api.py自带健康检查，会等待api_server.py就绪)..."
 
-# 创建标志文件用于线程间通信
-TTS_READY_FLAG="/tmp/tts_ready_${LOG_TIMESTAMP}.flag"
-API_PY_STARTED_FLAG="/tmp/api_py_started_${LOG_TIMESTAMP}.flag"
-rm -f "$TTS_READY_FLAG" "$API_PY_STARTED_FLAG" 2>/dev/null
+docker exec -d ${server_name} /bin/bash -c "cd /mnt/index-tts-vllm && nohup /root/miniconda3/envs/index-tts-vllm/bin/python api.py --port 9001 > /mnt/index-tts-vllm/logs/api_py_${LOG_TIMESTAMP}.log 2>&1 &"
 
-# 后台线程: 每3秒检测TTS服务是否就绪，就绪后立即启动api.py
-(
-    max_tts_retries=120  # 最多等待360秒(6分钟)
-    tts_retry_count=0
-    
-    while [ $tts_retry_count -lt $max_tts_retries ]; do
-        # 检查api_server.py进程是否还在运行
-        if ! docker exec ${server_name} /bin/bash -c "ps aux | grep api_server.py | grep -v grep" > /dev/null 2>&1; then
-            echo "$(date): [后台线程] 错误: api_server.py进程已退出!"
-            break
-        fi
-        
-        # 方法1: 检查api_server.py日志是否显示服务已启动(Application startup complete)
-        if docker exec ${server_name} /bin/bash -c "grep -q 'Application startup complete\|Uvicorn running on' /mnt/index-tts-vllm/logs/api_server_py_*.log 2>/dev/null"; then
-            echo "$(date): [后台线程] 检测到api_server.py日志显示服务已启动"
-            
-            # 方法2: 发送简单健康检查(不发送TTS请求，只检查端口是否响应)
-            health_check=$(docker exec ${server_name} /bin/bash -c "curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 http://localhost:6006/ 2>/dev/null || echo 'failed'" 2>/dev/null)
-            
-            if [ "$health_check" != "failed" ] && [ -n "$health_check" ]; then
-                echo "$(date): [后台线程] api_server.py HTTP服务已就绪 (状态码: $health_check)"
-                
-                # 方法3: 发送真实TTS请求验证(使用更长超时时间120秒，因为首次TTS可能需要加载模型)
-                echo "$(date): [后台线程] 发送TTS测试请求验证服务完全就绪..."
-                tts_response=$(docker exec ${server_name} /bin/bash -c "curl -s -w '%{http_code}' --connect-timeout 120 --max-time 180 -X POST http://localhost:6006/tts_url -H 'Content-Type: application/json' -d '{\"text\":\"你好\",\"audio_paths\":[\"assets/jay_promptvn.wav\"],\"seed\":42}' -o /tmp/tts_test.wav 2>/dev/null" 2>/dev/null)
-                
-                echo "$(date): [后台线程] TTS响应状态码: $tts_response"
-                
-                if [ "$tts_response" = "200" ]; then
-                    wav_size=$(docker exec ${server_name} /bin/bash -c "stat -c%s /tmp/tts_test.wav 2>/dev/null || echo 0" 2>/dev/null)
-                    if [ "$wav_size" -gt 44 ]; then
-                        echo "$(date): [后台线程] api_server.py TTS服务已完全就绪! 收到${wav_size}字节的WAV数据"
-                        touch "$TTS_READY_FLAG"
-                        
-                        # 立即启动api.py
-                        echo "$(date): [后台线程] 立即启动api.py..."
-                        docker exec -d ${server_name} /bin/bash -c "cd /mnt/index-tts-vllm && nohup /root/miniconda3/envs/index-tts-vllm/bin/python api.py --port 9001 > /mnt/index-tts-vllm/logs/api_py_${LOG_TIMESTAMP}.log 2>&1 &"
-                        
-                        sleep 5
-                        if docker exec ${server_name} /bin/bash -c "ps aux | grep 'api.py' | grep -v grep" > /dev/null 2>&1; then
-                            echo "$(date): [后台线程] api.py 已成功启动"
-                            touch "$API_PY_STARTED_FLAG"
-                        else
-                            echo "$(date): [后台线程] 警告: api.py 可能未成功启动"
-                        fi
-                        break
-                    else
-                        echo "$(date): [后台线程] TTS返回数据过小: ${wav_size}字节"
-                    fi
-                else
-                    echo "$(date): [后台线程] TTS请求失败，继续等待..."
-                fi
-            fi
-        fi
-        
-        echo "$(date): [后台线程] 等待TTS服务就绪... (${tts_retry_count}/${max_tts_retries})"
-        sleep 3
-        tts_retry_count=$((tts_retry_count + 1))
-    done
-    
-    if [ $tts_retry_count -eq $max_tts_retries ]; then
-        echo "$(date): [后台线程] 警告: TTS服务检测超时，尝试启动api.py..."
-        docker exec -d ${server_name} /bin/bash -c "cd /mnt/index-tts-vllm && nohup /root/miniconda3/envs/index-tts-vllm/bin/python api.py --port 9001 > /mnt/index-tts-vllm/logs/api_py_${LOG_TIMESTAMP}.log 2>&1 &"
-        touch "$API_PY_STARTED_FLAG"
-    fi
-) &
+# 等待api.py进程启动
+sleep 5
 
-BACKGROUND_PID=$!
-echo "$(date): 后台检测线程已启动 (PID: $BACKGROUND_PID)"
-
-# 主线程等待后台线程完成(最多等待400秒)
-echo "$(date): 主线程等待后台线程完成..."
-wait_count=0
-max_wait=400
-while [ $wait_count -lt $max_wait ]; do
-    if [ -f "$API_PY_STARTED_FLAG" ]; then
-        echo "$(date): api.py已由后台线程启动"
-        break
-    fi
-    sleep 1
-    wait_count=$((wait_count + 1))
-done
-
-# 清理标志文件
-rm -f "$TTS_READY_FLAG" "$API_PY_STARTED_FLAG" 2>/dev/null
+# 检查api.py是否成功启动
+if docker exec ${server_name} /bin/bash -c "ps aux | grep 'api.py' | grep -v grep" > /dev/null 2>&1; then
+    echo "$(date): api.py 进程已成功启动"
+else
+    echo "$(date): 警告: api.py 进程未检测到，尝试重新启动..."
+    docker exec -d ${server_name} /bin/bash -c "cd /mnt/index-tts-vllm && nohup /root/miniconda3/envs/index-tts-vllm/bin/python api.py --port 9001 > /mnt/index-tts-vllm/logs/api_py_${LOG_TIMESTAMP}.log 2>&1 &"
+    sleep 5
+fi
 
 # 最终检查服务状态
 echo "$(date): 检查最终服务状态..."

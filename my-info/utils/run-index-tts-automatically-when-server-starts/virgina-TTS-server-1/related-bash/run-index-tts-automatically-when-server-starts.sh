@@ -12,14 +12,18 @@ set -e
 # 配置参数
 # ============================================================================
 NAS_URL="13b67948707-hme76.us-east-1.nas.aliyuncs.com"
-version="1.5.0"
+version="1.5.1"
 server_name="index-tts-vllm"
 image_prefix="d.watchfun.cn/jims57"
 image_name="${image_prefix}/${server_name}"
 tag="v${version}"
 API_PORT=9001
 LOG_FILE="/var/log/index-tts-startup.log"
-LOG_TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+
+# 日志文件路径(固定名称，方便实时查看)
+API_PY_LOG="/mnt/index-tts-vllm/logs/api_py_current.log"
+API_SERVER_PY_LOG="/mnt/index-tts-vllm/logs/api_server_py_current.log"
+ARCHIVED_LOGS_DIR="/mnt/index-tts-vllm/logs/archived-logs"
 
 # 日志函数
 log() {
@@ -29,6 +33,43 @@ log() {
 log "=========================================="
 log "Index-TTS-vLLM 自动启动脚本开始执行"
 log "=========================================="
+
+# ============================================================================
+# 日志轮转函数 - 每小时归档日志并清空当前日志
+# ============================================================================
+rotate_logs() {
+    local archive_timestamp=$(date +%Y-%m-%d-%H)
+    
+    # 创建归档目录
+    mkdir -p "${ARCHIVED_LOGS_DIR}"
+    
+    # 归档api_py日志
+    if [ -f "${API_PY_LOG}" ] && [ -s "${API_PY_LOG}" ]; then
+        cp "${API_PY_LOG}" "${ARCHIVED_LOGS_DIR}/api_py_${archive_timestamp}.log"
+        > "${API_PY_LOG}"
+        log "已归档 api_py 日志到 ${ARCHIVED_LOGS_DIR}/api_py_${archive_timestamp}.log"
+    fi
+    
+    # 归档api_server_py日志
+    if [ -f "${API_SERVER_PY_LOG}" ] && [ -s "${API_SERVER_PY_LOG}" ]; then
+        cp "${API_SERVER_PY_LOG}" "${ARCHIVED_LOGS_DIR}/api_server_py_${archive_timestamp}.log"
+        > "${API_SERVER_PY_LOG}"
+        log "已归档 api_server_py 日志到 ${ARCHIVED_LOGS_DIR}/api_server_py_${archive_timestamp}.log"
+    fi
+}
+
+# 启动后台日志轮转进程(每小时执行一次)
+start_log_rotation() {
+    log "启动后台日志轮转进程(每小时执行一次)..."
+    (
+        while true; do
+            sleep 3600  # 每小时
+            rotate_logs
+        done
+    ) &
+    LOG_ROTATION_PID=$!
+    log "日志轮转进程已启动, PID: ${LOG_ROTATION_PID}"
+}
 
 # ============================================================================
 # 步骤1: 检查并挂载NAS目录
@@ -134,11 +175,15 @@ fi
 log "容器启动成功"
 
 # ============================================================================
-# 步骤3: 启动api.py
+# 步骤3: 创建归档目录并启动api.py
 # ============================================================================
 log "步骤3: 启动api.py..."
 
-docker exec -d ${server_name} /bin/bash -c "cd /mnt/index-tts-vllm && nohup /root/miniconda3/envs/index-tts-vllm/bin/python api.py --port ${API_PORT} > /mnt/index-tts-vllm/logs/api_py_${LOG_TIMESTAMP}.log 2>&1 &"
+# 创建归档目录
+docker exec ${server_name} /bin/bash -c "mkdir -p ${ARCHIVED_LOGS_DIR}"
+
+# 启动api.py(使用固定日志文件名)
+docker exec -d ${server_name} /bin/bash -c "cd /mnt/index-tts-vllm && nohup /root/miniconda3/envs/index-tts-vllm/bin/python api.py --port ${API_PORT} > ${API_PY_LOG} 2>&1 &"
 
 sleep 3
 
@@ -154,7 +199,8 @@ fi
 # ============================================================================
 log "步骤4: 启动api_server.py..."
 
-docker exec -d ${server_name} /bin/bash -c "cd /mnt/index-tts-vllm && nohup /root/miniconda3/envs/index-tts-vllm/bin/python api_server.py --port 6006 --model_dir /mnt/index-tts-vllm/checkpoints/Index-TTS-1.5-vLLM --gpu_memory_utilization 0.25 > /mnt/index-tts-vllm/logs/api_server_py_${LOG_TIMESTAMP}.log 2>&1 &"
+# 启动api_server.py(使用固定日志文件名)
+docker exec -d ${server_name} /bin/bash -c "cd /mnt/index-tts-vllm && nohup /root/miniconda3/envs/index-tts-vllm/bin/python api_server.py --port 6006 --model_dir /mnt/index-tts-vllm/checkpoints/Index-TTS-1.5-vLLM --gpu_memory_utilization 0.25 > ${API_SERVER_PY_LOG} 2>&1 &"
 
 sleep 3
 
@@ -166,12 +212,20 @@ else
 fi
 
 # ============================================================================
+# 步骤5: 启动日志轮转
+# ============================================================================
+start_log_rotation
+
+# ============================================================================
 # 完成
 # ============================================================================
 log "=========================================="
 log "Index-TTS-vLLM 自动启动脚本执行完成"
-log "api.py 日志: /mnt/index-tts-vllm/logs/api_py_${LOG_TIMESTAMP}.log"
-log "api_server.py 日志: /mnt/index-tts-vllm/logs/api_server_py_${LOG_TIMESTAMP}.log"
+log "api.py 日志: ${API_PY_LOG}"
+log "api_server.py 日志: ${API_SERVER_PY_LOG}"
+log "归档日志目录: ${ARCHIVED_LOGS_DIR}"
+log "日志轮转: 每小时自动归档，文件名格式: api_py_YYYY-MM-DD-HH.log"
 log "=========================================="
 
-exit 0
+# 保持脚本运行(日志轮转进程需要)
+wait

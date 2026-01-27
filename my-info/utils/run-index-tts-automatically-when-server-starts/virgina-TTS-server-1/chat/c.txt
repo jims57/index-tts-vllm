@@ -17,3 +17,7 @@
   "startTimeId": 1234567890,
   "messageId": 4
 }
+
+
+docker exec -it index-tts-vllm /bin/bash -c "tail -f /mnt/index-tts-vllm/logs/api_py_*.log"
+docker exec -it index-tts-vllm /bin/bash -c "tail -f /mnt/index-tts-vllm/logs/api_server_py_*.log"

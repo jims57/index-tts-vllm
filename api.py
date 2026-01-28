@@ -2,8 +2,8 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.5.1
-# Changes number: 51
+# Version: 1.5.2
+# Changes number: 52
 #
 # Common cmd:
 # head -n 10 /mnt/index-tts-vllm/api.py
@@ -1397,6 +1397,17 @@ class GaplessMP3Encoder:
             self.process = None
         print(f"[GaplessMP3] Encoder closed, total writes: {self.frames_written}")
 
+def ws_log(message: str, trace_id: str = None):
+    """
+    WebSocket日志函数 - 添加日期时间和可选的traceId前缀
+    格式: 2026-01-27 22:46:50 [traceId] [Index-TTS-WS] message
+    """
+    timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+    if trace_id:
+        print(f"{timestamp} [{trace_id}] [Index-TTS-WS] {message}", flush=True)
+    else:
+        print(f"{timestamp} [Index-TTS-WS] {message}", flush=True)
+
 @app.websocket("/tts")
 async def websocket_tts(websocket: WebSocket):
     """
@@ -1405,20 +1416,22 @@ async def websocket_tts(websocket: WebSocket):
     """
     await websocket.accept()
     ws_start_time = time.time()
-    print(f"[Index-TTS-WS] ========== WebSocket连接已建立 ==========", flush=True)
-    print(f"[Index-TTS-WS] 连接时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(ws_start_time))}", flush=True)
+    # 连接级别的traceId(在收到请求前为None)
+    current_trace_id = None
+    ws_log("========== WebSocket连接已建立 ==========")
+    ws_log(f"连接时间: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(ws_start_time))}")
     
     # 添加API密钥验证
     api_key = websocket.headers.get("x-api-key")
     if not api_key or api_key not in VALID_API_KEYS:
-        print(f"[Index-TTS-WS] API密钥验证失败: api_key={api_key}", flush=True)
+        ws_log(f"API密钥验证失败: api_key={api_key}")
         await websocket.send_text(json.dumps({
             "errorCode": 4401,
             "message": "Missing or invalid x-api-key header"
         }))
         await websocket.close(code=4001, reason="Unauthorized")
         return
-    print(f"[Index-TTS-WS] API密钥验证成功", flush=True)
+    ws_log("API密钥验证成功")
     
     # 存储活动的TTS请求
     active_tts_requests = {}
@@ -1431,68 +1444,70 @@ async def websocket_tts(websocket: WebSocket):
     
     async def message_receiver():
         """接收客户端消息的后台任务"""
-        nonlocal connection_active
+        nonlocal connection_active, current_trace_id
         try:
             while connection_active:
                 try:
                     # 设置超时以检测死连接
                     data = await asyncio.wait_for(websocket.receive_text(), timeout=120.0)
                     request_data = json.loads(data)
-                    print(f"[Index-TTS-WS] 收到请求: {request_data}", flush=True)
+                    # 提取traceId用于日志
+                    req_trace_id = request_data.get("traceId")
+                    ws_log(f"收到请求: {request_data}", req_trace_id)
                     
                     # 立即处理停止信号，不排队
                     if request_data.get("task") == "stopTTS" or request_data.get("action") == "stop":
                         message_id = request_data.get("messageId")
                         if message_id is not None:
-                            print(f"[Index-TTS-WS] 收到停止信号，messageId: {message_id}", flush=True)
+                            ws_log(f"收到停止信号，messageId: {message_id}", req_trace_id)
                             
                             # 标记活动请求为停止
                             if message_id in active_tts_requests:
                                 active_tts_requests[message_id]["stop_requested"] = True
-                                print(f"[Index-TTS-WS] 已标记messageId {message_id}为停止", flush=True)
+                                ws_log(f"已标记messageId {message_id}为停止", req_trace_id)
                             else:
-                                print(f"[Index-TTS-WS] messageId {message_id}未在活动请求中找到", flush=True)
+                                ws_log(f"messageId {message_id}未在活动请求中找到", req_trace_id)
                             
                             # 将messageId添加到忽略列表
                             current_time = time.time()
                             expiration_time = current_time + (ignoringDurationInMillisecondsAfterStopTTS / 1000.0)
                             ignored_message_ids[message_id] = expiration_time
-                            print(f"[Index-TTS-WS] messageId {message_id}已添加到忽略列表，过期时间: {expiration_time:.3f}", flush=True)
+                            ws_log(f"messageId {message_id}已添加到忽略列表，过期时间: {expiration_time:.3f}", req_trace_id)
                     else:
                         # 将TTS请求排队处理
                         await message_queue.put(request_data)
                 
                 except asyncio.TimeoutError:
                     # 等待消息超时 - 连接可能空闲但仍然活动
-                    print(f"[Index-TTS-WS] 120秒内未收到消息，连接仍然活动", flush=True)
+                    ws_log("120秒内未收到消息，连接仍然活动", current_trace_id)
                     continue
                 
                 except WebSocketDisconnect as disconnect_error:
                     # 客户端正常或异常断开连接
-                    print(f"[Index-TTS-WS] 客户端在接收器中断开连接: {disconnect_error}", flush=True)
+                    ws_log(f"客户端在接收器中断开连接: {disconnect_error}", current_trace_id)
                     connection_active = False
                     break
                 
                 except Exception as recv_error:
                     # 处理其他接收错误
-                    print(f"[Index-TTS-WS] 接收消息错误: {recv_error}", flush=True)
+                    ws_log(f"接收消息错误: {recv_error}", current_trace_id)
                     connection_active = False
                     break
         
         except asyncio.CancelledError:
-            print(f"[Index-TTS-WS] 消息接收器已取消", flush=True)
+            ws_log("消息接收器已取消", current_trace_id)
             connection_active = False
         
         except Exception as e:
-            print(f"[Index-TTS-WS] 消息接收器致命错误: {e}", flush=True)
+            ws_log(f"消息接收器致命错误: {e}", current_trace_id)
             connection_active = False
         
         finally:
-            print(f"[Index-TTS-WS] 消息接收器已停止，清理活动请求", flush=True)
+            ws_log("消息接收器已停止，清理活动请求", current_trace_id)
             # 标记所有活动TTS请求为停止
             for message_id in list(active_tts_requests.keys()):
                 active_tts_requests[message_id]["stop_requested"] = True
-                print(f"[Index-TTS-WS] 已标记messageId {message_id}进行清理", flush=True)
+                ws_log(f"已标记messageId {message_id}进行清理", current_trace_id)
     
     # 启动后台消息接收任务
     receiver_task = asyncio.create_task(message_receiver())
@@ -1504,7 +1519,7 @@ async def websocket_tts(websocket: WebSocket):
             expired_message_ids = [msg_id for msg_id, exp_time in ignored_message_ids.items() if current_time > exp_time]
             for msg_id in expired_message_ids:
                 del ignored_message_ids[msg_id]
-                print(f"[Index-TTS-WS] 已从忽略列表中移除过期的messageId {msg_id}", flush=True)
+                ws_log(f"已从忽略列表中移除过期的messageId {msg_id}", current_trace_id)
             
             # 从队列获取下一个TTS请求
             try:
@@ -1522,6 +1537,8 @@ async def websocket_tts(websocket: WebSocket):
             save_audio_files = request_data.get("saveAudioFiles", False)
             language = request_data.get("language")
             seed = request_data.get("seed", 42)
+            # 提取traceId用于日志(可选参数)
+            current_trace_id = request_data.get("traceId")
             
             # 验证speakerId是否存在（懒加载模式：检查缓存或assets目录）
             speaker_id = str(speaker_id)
@@ -1530,7 +1547,7 @@ async def websocket_tts(websocket: WebSocket):
                 speaker_path = get_speaker_path(speaker_id)
                 if speaker_path is None:
                     # 说话人不存在，使用默认值"1"
-                    print(f"[Index-TTS-WS] speakerId '{speaker_id}' 在assets目录中不存在，使用默认值 '1'", flush=True)
+                    ws_log(f"speakerId '{speaker_id}' 在assets目录中不存在，使用默认值 '1'", current_trace_id)
                     speaker_id = "1"
             
             # 检查messageId是否在忽略列表中
@@ -1538,7 +1555,7 @@ async def websocket_tts(websocket: WebSocket):
                 current_time = time.time()
                 expiration_time = ignored_message_ids[message_id]
                 if current_time < expiration_time:
-                    print(f"[Index-TTS-WS] 忽略messageId {message_id}的TTS请求（在忽略列表中）", flush=True)
+                    ws_log(f"忽略messageId {message_id}的TTS请求（在忽略列表中）", current_trace_id)
                     continue
                 else:
                     del ignored_message_ids[message_id]
@@ -1572,13 +1589,13 @@ async def websocket_tts(websocket: WebSocket):
                 await websocket.send_text(json.dumps({"errorCode": 4400, "message": "Audio format must be 'mp3' or 'pcm'"}))
                 continue
             
-            print(f"[Index-TTS-WS] 处理请求 - 文本: {text[:50]}{'...' if len(text) > 50 else ''}", flush=True)
-            print(f"[Index-TTS-WS] 说话人: {speaker_id}, 采样率: {output_sample_rate}Hz, 格式: {audio_format}", flush=True)
+            ws_log(f"处理请求 - 文本: {text[:50]}{'...' if len(text) > 50 else ''}", current_trace_id)
+            ws_log(f"说话人: {speaker_id}, 采样率: {output_sample_rate}Hz, 格式: {audio_format}", current_trace_id)
             
             # 判断是否有消息头
             has_message_headers = start_time_id is not None and message_id is not None
             if has_message_headers:
-                print(f"[Index-TTS-WS] 消息头 - startTimeId: {start_time_id}, messageId: {message_id}", flush=True)
+                ws_log(f"消息头 - startTimeId: {start_time_id}, messageId: {message_id}", current_trace_id)
             
             # 设置保存音频块的文件夹
             chunk_save_folder = None
@@ -1586,14 +1603,14 @@ async def websocket_tts(websocket: WebSocket):
             if save_audio_files:
                 chunk_save_folder = os.path.join(os.path.dirname(__file__), "savedAudioFiles")
                 os.makedirs(chunk_save_folder, exist_ok=True)
-                print(f"[Index-TTS-WS] 创建/验证音频块保存文件夹: {chunk_save_folder}", flush=True)
+                ws_log(f"创建/验证音频块保存文件夹: {chunk_save_folder}", current_trace_id)
             
             try:
                 # 分割文本
                 text_segments = split_text_by_punctuation(text, language)
-                print(f"[Index-TTS-WS] 将文本分割为 {len(text_segments)} 个段落", flush=True)
+                ws_log(f"将文本分割为 {len(text_segments)} 个段落", current_trace_id)
                 for i, segment in enumerate(text_segments):
-                    print(f"[Index-TTS-WS] 段落 {i+1}: {segment[:50]}{'...' if len(segment) > 50 else ''}", flush=True)
+                    ws_log(f"段落 {i+1}: {segment[:50]}{'...' if len(segment) > 50 else ''}", current_trace_id)
                 
                 # 跟踪是否被停止
                 stop_requested = False
@@ -1605,19 +1622,19 @@ async def websocket_tts(websocket: WebSocket):
                 mp3_encoder = None
                 if audio_format == "mp3":
                     mp3_encoder = GaplessMP3Encoder(sample_rate=output_sample_rate, bitrate='128k')
-                    print(f"[Index-TTS-WS] 创建GaplessMP3Encoder用于无缝流式传输", flush=True)
+                    ws_log("创建GaplessMP3Encoder用于无缝流式传输", current_trace_id)
                 
                 # 处理每个文本段落
                 for segment_idx, segment_text in enumerate(text_segments):
                     # 检查是否收到停止请求
                     if message_id is not None and message_id in active_tts_requests:
                         if active_tts_requests[message_id]["stop_requested"]:
-                            print(f"[Index-TTS-WS] TTS生成已停止，messageId: {message_id}", flush=True)
+                            ws_log(f"TTS生成已停止，messageId: {message_id}", current_trace_id)
                             stop_requested = True
                             break
                     
                     segment_start_time = time.time()
-                    print(f"[Index-TTS-WS] 处理段落 {segment_idx+1}/{len(text_segments)}: {segment_text[:50]}{'...' if len(segment_text) > 50 else ''}", flush=True)
+                    ws_log(f"处理段落 {segment_idx+1}/{len(text_segments)}: {segment_text[:50]}{'...' if len(segment_text) > 50 else ''}", current_trace_id)
                     
                     try:
                         # 调用Index-TTS-vLLM API生成音频
@@ -1632,7 +1649,7 @@ async def websocket_tts(websocket: WebSocket):
                             pcm_data = await resample_audio(pcm_data, source_rate, output_sample_rate)
                         
                         segment_time = (time.time() - segment_start_time) * 1000
-                        print(f"[Index-TTS-WS] 段落 {segment_idx+1} 生成时间: {segment_time:.2f}ms", flush=True)
+                        ws_log(f"段落 {segment_idx+1} 生成时间: {segment_time:.2f}ms", current_trace_id)
                         
                         # 发送音频数据
                         if audio_format == "pcm":
@@ -1653,9 +1670,9 @@ async def websocket_tts(websocket: WebSocket):
                                 with open(chunk_path, "wb") as f:
                                     f.write(audio_bytes_with_headers)
                                 if has_message_headers:
-                                    print(f"[Index-TTS-WS] 已保存 {chunk_filename} ({len(audio_bytes_with_headers)} 字节，包含12字节头部)", flush=True)
+                                    ws_log(f"已保存 {chunk_filename} ({len(audio_bytes_with_headers)} 字节，包含12字节头部)", current_trace_id)
                                 else:
-                                    print(f"[Index-TTS-WS] 已保存 {chunk_filename} ({len(audio_bytes_with_headers)} 字节，无头部)", flush=True)
+                                    ws_log(f"已保存 {chunk_filename} ({len(audio_bytes_with_headers)} 字节，无头部)", current_trace_id)
                             
                             audio_chunk = audio_bytes_with_headers
                             
@@ -1665,13 +1682,13 @@ async def websocket_tts(websocket: WebSocket):
                                     await websocket.send_bytes(audio_chunk)
                                     chunk_counter += 1
                                     has_audio_sent = True
-                                    print(f"[Index-TTS-WS] 已发送PCM音频块 {chunk_counter}, 大小: {len(audio_chunk)} 字节", flush=True)
+                                    ws_log(f"已发送PCM音频块 {chunk_counter}, 大小: {len(audio_chunk)} 字节", current_trace_id)
                                 except Exception as send_error:
-                                    print(f"[Index-TTS-WS] 发送音频块错误: {send_error}", flush=True)
+                                    ws_log(f"发送音频块错误: {send_error}", current_trace_id)
                                     connection_active = False
                                     break
                             else:
-                                print(f"[Index-TTS-WS] 连接不再活动，停止音频传输", flush=True)
+                                ws_log("连接不再活动，停止音频传输", current_trace_id)
                                 break
                         else:
                             # MP3格式 - 使用GaplessMP3Encoder进行无缝编码
@@ -1684,7 +1701,7 @@ async def websocket_tts(websocket: WebSocket):
                                 mp3_data = mp3_encoder.feed_pcm(pcm_float, volume_multiplier=1.0)
                                 
                                 if mp3_data:
-                                    print(f"[Index-TTS-WS] GaplessMP3: 输入 {len(pcm_float)} 样本, 输出 {len(mp3_data)} 字节", flush=True)
+                                    ws_log(f"GaplessMP3: 输入 {len(pcm_float)} 样本, 输出 {len(mp3_data)} 字节", current_trace_id)
                                     
                                     # 如果需要消息头，添加头部
                                     if has_message_headers:
@@ -1702,9 +1719,9 @@ async def websocket_tts(websocket: WebSocket):
                                         with open(chunk_path, "wb") as f:
                                             f.write(audio_bytes_with_headers)
                                         if has_message_headers:
-                                            print(f"[Index-TTS-WS] 已保存 {chunk_filename} ({len(audio_bytes_with_headers)} 字节，包含12字节头部)", flush=True)
+                                            ws_log(f"已保存 {chunk_filename} ({len(audio_bytes_with_headers)} 字节，包含12字节头部)", current_trace_id)
                                         else:
-                                            print(f"[Index-TTS-WS] 已保存 {chunk_filename} ({len(audio_bytes_with_headers)} 字节，无头部)", flush=True)
+                                            ws_log(f"已保存 {chunk_filename} ({len(audio_bytes_with_headers)} 字节，无头部)", current_trace_id)
                                     
                                     audio_chunk = audio_bytes_with_headers
                                     
@@ -1714,19 +1731,19 @@ async def websocket_tts(websocket: WebSocket):
                                             await websocket.send_bytes(audio_chunk)
                                             chunk_counter += 1
                                             has_audio_sent = True
-                                            print(f"[Index-TTS-WS] 已发送MP3音频块 {chunk_counter}, 大小: {len(audio_chunk)} 字节", flush=True)
+                                            ws_log(f"已发送MP3音频块 {chunk_counter}, 大小: {len(audio_chunk)} 字节", current_trace_id)
                                         except Exception as send_error:
-                                            print(f"[Index-TTS-WS] 发送音频块错误: {send_error}", flush=True)
+                                            ws_log(f"发送音频块错误: {send_error}", current_trace_id)
                                             connection_active = False
                                             break
                                     else:
-                                        print(f"[Index-TTS-WS] 连接不再活动，停止音频传输", flush=True)
+                                        ws_log("连接不再活动，停止音频传输", current_trace_id)
                                         break
                                 else:
-                                    print(f"[Index-TTS-WS] GaplessMP3: 输入 {len(pcm_float)} 样本, 缓冲中...", flush=True)
+                                    ws_log(f"GaplessMP3: 输入 {len(pcm_float)} 样本, 缓冲中...", current_trace_id)
                                     
                             except Exception as mp3_error:
-                                print(f"[Index-TTS-WS] MP3编码错误: {mp3_error}", flush=True)
+                                ws_log(f"MP3编码错误: {mp3_error}", current_trace_id)
                                 await websocket.send_text(json.dumps({
                                     "errorCode": 5001,
                                     "message": f"MP3 encoding failed: {str(mp3_error)}"
@@ -1734,7 +1751,7 @@ async def websocket_tts(websocket: WebSocket):
                                 break
                         
                     except Exception as e:
-                        print(f"[Index-TTS-WS] 段落 {segment_idx+1} 生成失败: {str(e)}", flush=True)
+                        ws_log(f"段落 {segment_idx+1} 生成失败: {str(e)}", current_trace_id)
                         await websocket.send_text(json.dumps({
                             "errorCode": 5000,
                             "message": f"Failed to generate audio for segment {segment_idx+1}: {str(e)}"
@@ -1750,7 +1767,7 @@ async def websocket_tts(websocket: WebSocket):
                                 header_bytes = struct.pack('>QI', start_time_id, message_id)
                                 data_to_send = header_bytes + final_mp3_data
                                 await websocket.send_bytes(data_to_send)
-                                print(f"[Index-TTS-WS] GaplessMP3: 刷新最终 {len(final_mp3_data)} 字节（带头部）", flush=True)
+                                ws_log(f"GaplessMP3: 刷新最终 {len(final_mp3_data)} 字节（带头部）", current_trace_id)
                                 # 保存最终MP3数据（如果需要）
                                 if save_audio_files and chunk_save_folder:
                                     chunk_file_counter += 1
@@ -1758,10 +1775,10 @@ async def websocket_tts(websocket: WebSocket):
                                     chunk_path = os.path.join(chunk_save_folder, chunk_filename)
                                     with open(chunk_path, "wb") as f:
                                         f.write(data_to_send)
-                                    print(f"[Index-TTS-WS] 已保存 {chunk_filename} ({len(data_to_send)} 字节，包含12字节头部)", flush=True)
+                                    ws_log(f"已保存 {chunk_filename} ({len(data_to_send)} 字节，包含12字节头部)", current_trace_id)
                             else:
                                 await websocket.send_bytes(final_mp3_data)
-                                print(f"[Index-TTS-WS] GaplessMP3: 刷新最终 {len(final_mp3_data)} 字节", flush=True)
+                                ws_log(f"GaplessMP3: 刷新最终 {len(final_mp3_data)} 字节", current_trace_id)
                                 # 保存最终MP3数据（如果需要）
                                 if save_audio_files and chunk_save_folder:
                                     chunk_file_counter += 1
@@ -1769,12 +1786,12 @@ async def websocket_tts(websocket: WebSocket):
                                     chunk_path = os.path.join(chunk_save_folder, chunk_filename)
                                     with open(chunk_path, "wb") as f:
                                         f.write(final_mp3_data)
-                                    print(f"[Index-TTS-WS] 已保存 {chunk_filename} ({len(final_mp3_data)} 字节，无头部)", flush=True)
+                                    ws_log(f"已保存 {chunk_filename} ({len(final_mp3_data)} 字节，无头部)", current_trace_id)
                             chunk_counter += 1
                             has_audio_sent = True
                         mp3_encoder.close()
                     except Exception as flush_error:
-                        print(f"[Index-TTS-WS] GaplessMP3 刷新错误: {str(flush_error)}", flush=True)
+                        ws_log(f"GaplessMP3 刷新错误: {str(flush_error)}", current_trace_id)
                 
                 # 发送完成信号（空流）仅在未停止且有音频成功发送时
                 if not stop_requested and connection_active and has_audio_sent:
@@ -1784,24 +1801,24 @@ async def websocket_tts(websocket: WebSocket):
                             header_bytes = struct.pack('>QI', start_time_id, message_id)
                             completion_data = header_bytes + b''
                             await websocket.send_bytes(completion_data)
-                            print(f"[Index-TTS-WS] 已发送完成信号: {len(completion_data)} 字节 (12字节头部 + 0音频字节)", flush=True)
+                            ws_log(f"已发送完成信号: {len(completion_data)} 字节 (12字节头部 + 0音频字节)", current_trace_id)
                         else:
                             # 发送空流
                             await websocket.send_bytes(b'')
-                            print(f"[Index-TTS-WS] 已发送完成信号: 0 字节 (空流)", flush=True)
+                            ws_log("已发送完成信号: 0 字节 (空流)", current_trace_id)
                     except Exception as completion_error:
-                        print(f"[Index-TTS-WS] 发送完成信号错误: {completion_error}", flush=True)
+                        ws_log(f"发送完成信号错误: {completion_error}", current_trace_id)
                         connection_active = False
                 
                 if stop_requested:
-                    print(f"[Index-TTS-WS] TTS已停止，messageId: {message_id} - 在停止前发送了 {chunk_counter} 个音频块", flush=True)
+                    ws_log(f"TTS已停止，messageId: {message_id} - 在停止前发送了 {chunk_counter} 个音频块", current_trace_id)
                 else:
-                    print(f"[Index-TTS-WS] 完成流式响应 - 发送了 {chunk_counter} 个音频块", flush=True)
+                    ws_log(f"完成流式响应 - 发送了 {chunk_counter} 个音频块", current_trace_id)
                 if save_audio_files:
-                    print(f"[Index-TTS-WS] 已保存 {chunk_file_counter} 个 {audio_format.upper()} 块文件到 {chunk_save_folder}", flush=True)
+                    ws_log(f"已保存 {chunk_file_counter} 个 {audio_format.upper()} 块文件到 {chunk_save_folder}", current_trace_id)
                 
             except Exception as e:
-                print(f"[Index-TTS-WS] TTS生成错误: {str(e)}", flush=True)
+                ws_log(f"TTS生成错误: {str(e)}", current_trace_id)
                 # 只在连接仍然活动时发送错误消息
                 if connection_active:
                     try:
@@ -1817,13 +1834,13 @@ async def websocket_tts(websocket: WebSocket):
                     del active_tts_requests[message_id]
     
     except WebSocketDisconnect:
-        print(f"[Index-TTS-WS] WebSocket连接已断开", flush=True)
+        ws_log("WebSocket连接已断开", current_trace_id)
     except Exception as e:
-        print(f"[Index-TTS-WS] WebSocket错误: {str(e)}", flush=True)
+        ws_log(f"WebSocket错误: {str(e)}", current_trace_id)
     finally:
         connection_active = False
         receiver_task.cancel()
-        print(f"[Index-TTS-WS] WebSocket连接已关闭", flush=True)
+        ws_log("WebSocket连接已关闭", current_trace_id)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Index-TTS-vLLM API Server')

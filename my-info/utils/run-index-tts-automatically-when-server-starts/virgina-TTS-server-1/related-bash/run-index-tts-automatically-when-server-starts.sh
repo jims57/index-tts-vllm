@@ -12,7 +12,7 @@ set -e
 # 配置参数
 # ============================================================================
 NAS_URL="13b67948707-hme76.us-east-1.nas.aliyuncs.com"
-version="1.5.1"
+version="1.5.2"
 server_name="index-tts-vllm"
 image_prefix="d.watchfun.cn/jims57"
 image_name="${image_prefix}/${server_name}"
@@ -20,10 +20,15 @@ tag="v${version}"
 API_PORT=9001
 LOG_FILE="/var/log/index-tts-startup.log"
 
-# 日志文件路径(固定名称，方便实时查看)
-API_PY_LOG="/mnt/index-tts-vllm/logs/api_py_current.log"
-API_SERVER_PY_LOG="/mnt/index-tts-vllm/logs/api_server_py_current.log"
-ARCHIVED_LOGS_DIR="/mnt/index-tts-vllm/logs/archived-logs"
+# 获取ECS创建时间(脚本运行时间)和服务器IP，用于区分不同服务器的日志
+ECS_CREATION_DATE=$(date +%Y-%m-%d-%H-%M)
+SERVER_IP=$(curl -s --connect-timeout 5 ifconfig.me 2>/dev/null || echo "unknown-ip")
+
+# 日志文件路径(使用创建时间和服务器IP区分不同服务器)
+LOGS_BASE_DIR="/mnt/index-tts-vllm/logs/${ECS_CREATION_DATE}/${SERVER_IP}"
+API_PY_LOG="${LOGS_BASE_DIR}/api_py_current.log"
+API_SERVER_PY_LOG="${LOGS_BASE_DIR}/api_server_py_current.log"
+ARCHIVED_LOGS_DIR="${LOGS_BASE_DIR}/archived-logs"
 
 # 日志函数
 log() {
@@ -32,6 +37,9 @@ log() {
 
 log "=========================================="
 log "Index-TTS-vLLM 自动启动脚本开始执行"
+log "ECS创建时间: ${ECS_CREATION_DATE}"
+log "服务器IP: ${SERVER_IP}"
+log "日志目录: ${LOGS_BASE_DIR}"
 log "=========================================="
 
 # ============================================================================
@@ -175,11 +183,12 @@ fi
 log "容器启动成功"
 
 # ============================================================================
-# 步骤3: 创建归档目录并启动api.py
+# 步骤3: 创建日志目录并启动api.py
 # ============================================================================
 log "步骤3: 启动api.py..."
 
-# 创建归档目录
+# 创建日志目录(包含创建时间和服务器IP)
+docker exec ${server_name} /bin/bash -c "mkdir -p ${LOGS_BASE_DIR}"
 docker exec ${server_name} /bin/bash -c "mkdir -p ${ARCHIVED_LOGS_DIR}"
 
 # 启动api.py(使用固定日志文件名)
@@ -225,6 +234,8 @@ log "api.py 日志: ${API_PY_LOG}"
 log "api_server.py 日志: ${API_SERVER_PY_LOG}"
 log "归档日志目录: ${ARCHIVED_LOGS_DIR}"
 log "日志轮转: 每小时自动归档，文件名格式: api_py_YYYY-MM-DD-HH.log"
+log "查看api.py日志: docker exec -it ${server_name} /bin/bash -c \"tail -f ${API_PY_LOG}\""
+log "查看api_server.py日志: docker exec -it ${server_name} /bin/bash -c \"tail -f ${API_SERVER_PY_LOG}\""
 log "=========================================="
 
 # 保持脚本运行(日志轮转进程需要)

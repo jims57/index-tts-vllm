@@ -21,7 +21,7 @@ sudo ln -s /usr/bin/python3 /usr/bin/python
 
 # Step 2：(For indextts-server tmux session)
 # tmux new -s indextts-server
-# version="1.4.9" && server_name="index-tts-vllm" && image_prefix="d.watchfun.cn/jims57" && image_name="${image_prefix}/${server_name}" && tag="v${version}" && docker rm "${server_name}" -f && docker run --gpus all -it -p 9001:9001 --shm-size=4g -w /mnt/index-tts-vllm -v /mnt/index-tts-vllm/checkpoints:/mnt/index-tts-vllm/checkpoints -v /mnt/index-tts-vllm/assets:/mnt/index-tts-vllm/assets -v /mnt/index-tts-vllm/logs:/mnt/index-tts-vllm/logs -v /mnt/index-tts-vllm/savedAudioFiles:/mnt/index-tts-vllm/savedAudioFiles -e API_PORT=9001 --name "${server_name}" "${image_name}:${tag}" /bin/bash
+# version="1.4.9" && server_name="index-tts-vllm" && image_prefix="d.watchfun.cn/jims57" && image_name="${image_prefix}/${server_name}" && tag="v${version}" && docker rm "${server_name}" -f && docker run --gpus all -it -p 19001:9001 --shm-size=4g -w /mnt/index-tts-vllm -v /mnt/index-tts-vllm/checkpoints:/mnt/index-tts-vllm/checkpoints -v /mnt/index-tts-vllm/assets:/mnt/index-tts-vllm/assets -v /mnt/index-tts-vllm/logs:/mnt/index-tts-vllm/logs -v /mnt/index-tts-vllm/savedAudioFiles:/mnt/index-tts-vllm/savedAudioFiles -e API_PORT=9001 --name "${server_name}" "${image_name}:${tag}" /bin/bash
 # modelscope download --model kusuriuri/Index-TTS-1.5-vLLM --local_dir ./checkpoints/Index-TTS-1.5-vLLM
 # python api_server.py --port 6006 --model_dir /mnt/index-tts-vllm/checkpoints/Index-TTS-1.5-vLLM --gpu_memory_utilization 0.25
 # 

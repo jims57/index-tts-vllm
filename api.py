@@ -2,8 +2,8 @@
 # Author: Jimmy Gan
 # Date: Nov 24, 2025
 # Index-TTS-vLLM API Server - Wrapper for Index-TTS-vLLM
-# Version: 1.5.2
-# Changes number: 52
+# Version: 1.5.4
+# Changes number: 54
 #
 # Common cmd:
 # head -n 10 /mnt/index-tts-vllm/api.py
@@ -52,6 +52,8 @@ import aiohttp
 import uuid
 import numpy as np
 import select
+import logging
+from starlette.middleware.base import BaseHTTPMiddleware
 
 # 有效的API密钥
 VALID_API_KEYS = {
@@ -127,6 +129,32 @@ async def check_tts_server_ready():
 
 # 初始化FastAPI应用
 app = FastAPI()
+
+# 自定义中间件来过滤ALB健康检查日志
+class FilterHealthCheckLogsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        # 检查是否为健康检查请求（ALB发送的HEAD请求到根路径）
+        is_health_check = request.method == "HEAD" and request.url.path == "/"
+        
+        # 如果是健康检查请求，暂时禁用Uvicorn访问日志
+        if is_health_check:
+            # 保存当前日志级别
+            current_level = logging.getLogger("uvicorn.access").level
+            # 临时设置为更高级别以禁用访问日志
+            logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+            
+            # 处理请求
+            response = await call_next(request)
+            
+            # 恢复原始日志级别
+            logging.getLogger("uvicorn.access").setLevel(current_level)
+            return response
+        else:
+            # 正常处理非健康检查请求
+            return await call_next(request)
+
+# 添加自定义中间件（必须在CORS中间件之前添加）
+app.add_middleware(FilterHealthCheckLogsMiddleware)
 
 # 添加CORS中间件
 app.add_middleware(
@@ -1852,4 +1880,9 @@ if __name__ == "__main__":
     # 更新Index-TTS服务器URL
     INDEX_TTS_SERVER_URL = args.index_tts_url
     
-    uvicorn.run(app, host="0.0.0.0", port=args.port)
+    # 配置Uvicorn日志
+    log_config = uvicorn.config.LOGGING_CONFIG
+    # 确保访问日志使用INFO级别（默认），以便我们的中间件可以控制它
+    log_config["loggers"]["uvicorn.access"]["level"] = "INFO"
+    
+    uvicorn.run(app, host="0.0.0.0", port=args.port, log_config=log_config)

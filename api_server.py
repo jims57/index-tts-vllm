@@ -1,4 +1,6 @@
-
+""" 
+# filter out the ALB health check logs
+"""
 import os
 import asyncio
 import io
@@ -14,6 +16,8 @@ import asyncio
 import time
 import numpy as np
 import soundfile as sf
+import logging
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from indextts.infer_vllm import IndexTTS
 
@@ -40,6 +44,33 @@ async def lifespan(app: FastAPI):
     # ml_models.clear()
 
 app = FastAPI(lifespan=lifespan)
+
+# 自定义中间件来过滤ALB健康检查日志
+class FilterHealthCheckLogsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        # 检查是否为健康检查请求（ALB发送的HEAD请求到根路径或/health路径）
+        is_health_check = (request.method == "HEAD" and request.url.path == "/") or \
+                         (request.url.path == "/health")
+        
+        # 如果是健康检查请求，暂时禁用Uvicorn访问日志
+        if is_health_check:
+            # 保存当前日志级别
+            current_level = logging.getLogger("uvicorn.access").level
+            # 临时设置为更高级别以禁用访问日志
+            logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+            
+            # 处理请求
+            response = await call_next(request)
+            
+            # 恢复原始日志级别
+            logging.getLogger("uvicorn.access").setLevel(current_level)
+            return response
+        else:
+            # 正常处理非健康检查请求
+            return await call_next(request)
+
+# 添加自定义中间件（必须在CORS中间件之前添加）
+app.add_middleware(FilterHealthCheckLogsMiddleware)
 
 # 添加CORS中间件配置
 app.add_middleware(
@@ -201,4 +232,9 @@ if __name__ == "__main__":
     parser.add_argument("--gpu_memory_utilization", type=float, default=0.25)
     args = parser.parse_args()
 
-    uvicorn.run(app=app, host=args.host, port=args.port)
+    # 配置Uvicorn日志
+    log_config = uvicorn.config.LOGGING_CONFIG
+    # 确保访问日志使用INFO级别（默认），以便我们的中间件可以控制它
+    log_config["loggers"]["uvicorn.access"]["level"] = "INFO"
+    
+    uvicorn.run(app=app, host=args.host, port=args.port, log_config=log_config)

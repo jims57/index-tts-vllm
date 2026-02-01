@@ -12,7 +12,7 @@ set -e
 # 配置参数
 # ============================================================================
 NAS_URL="13b67948707-hme76.us-east-1.nas.aliyuncs.com"
-version="1.5.2"
+version="1.5.4"
 server_name="index-tts-vllm"
 image_prefix="d.watchfun.cn/jims57"
 image_name="${image_prefix}/${server_name}"
